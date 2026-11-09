@@ -2,7 +2,7 @@ name: Deploy to AWS
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "master" ]
   workflow_dispatch:
 
 permissions:
@@ -22,6 +22,7 @@ jobs:
           role-to-assume: arn:aws:iam::659791935620:role/GitHubActions-diniss12-gymsoftware
           aws-region: eu-west-1
           audience: sts.amazonaws.com
+          role-skip-session-tagging: true
 
       - name: Test AWS Connection
         run: |
