@@ -3,10 +3,10 @@ name: Deploy to AWS
 on:
   push:
     branches: [ "main" ]
-  workflow_dispatch: # Permite correr o teste manualmente no site do GitHub
+  workflow_dispatch:
 
 permissions:
-  id-token: write   # Essencial para a troca de tokens OIDC com a AWS
+  id-token: write
   contents: read
 
 jobs:
@@ -19,8 +19,9 @@ jobs:
       - name: Configure AWS Credentials via OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::659791935620:role/GitHubActions-dinisacn1-gymv2
+          role-to-assume: arn:aws:iam::659791935620:role/GitHubActions-diniss12-gymsoftware
           aws-region: eu-west-1
+          audience: sts.amazonaws.com
 
       - name: Test AWS Connection
         run: |
