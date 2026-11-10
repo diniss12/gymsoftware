@@ -1,114 +1,219 @@
-name: Deploy
- 
-on:
-  push:
-    branches: [main]
-  workflow_dispatch:        # permite correr à mão no separador Actions
- 
-permissions:
-  id-token: write           # necessário para pedir o token OIDC
-  contents: read
- 
-concurrency:                # nunca dois deploys em paralelo na mesma stack
-  group: deploy-prod
-  cancel-in-progress: false
- 
-env:
-  AWS_REGION: eu-west-1
-  STACK_NAME: gymsoftware     # tem de bater com o prefixo das permissões da role
- 
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
- 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"     # tem de bater com o Runtime do template
- 
-      - uses: aws-actions/setup-sam@v2
-        with:
-          use-installer: true
- 
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: arn:aws:iam::659791935620:role/GitHubActions-diniss12-gymsoftware
-          aws-region: ${{ env.AWS_REGION }}
- 
-      # ---------------------------------------------------------- Backend + infra
-      - name: SAM build
-        run: sam build
- 
-      - name: SAM deploy
-        run: |
-          sam deploy \
-            --stack-name "$STACK_NAME" \
-            --region "$AWS_REGION" \
-            --resolve-s3 \
-            --capabilities CAPABILITY_IAM \
-            --no-confirm-changeset \
-            --no-fail-on-empty-changeset
- 
-      - name: Read stack outputs
-        id: stack
-        run: |
-          get() {
-            aws cloudformation describe-stacks --stack-name "$STACK_NAME" \
-              --query "Stacks[0].Outputs[?OutputKey=='$1'].OutputValue" --output text
-          }
-          {
-            echo "api_url=$(get ApiUrl)"
-            echo "bucket=$(get FrontendBucketName)"
-            echo "distribution=$(get DistributionId)"
-            echo "frontend_url=$(get FrontendUrl)"
-            echo "user_pool_id=$(get UserPoolId)"
-            echo "user_pool_client_id=$(get UserPoolClientId)"
-          } >> "$GITHUB_OUTPUT"
- 
-      - name: Smoke test API
-        run: curl -fsS "${{ steps.stack.outputs.api_url }}/health"
- 
-      # ---------------------------------------------------------- Frontend
-      # Os passos abaixo são saltados enquanto não existir frontend/package.json
-      - uses: actions/setup-node@v4
-        if: hashFiles('frontend/package.json') != ''
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
- 
-      - name: Build frontend
-        if: hashFiles('frontend/package.json') != ''
-        working-directory: frontend
-        env:                          # o Vite injeta VITE_* no bundle em build time
-          VITE_API_URL: ${{ steps.stack.outputs.api_url }}
-          VITE_USER_POOL_ID: ${{ steps.stack.outputs.user_pool_id }}
-          VITE_USER_POOL_CLIENT_ID: ${{ steps.stack.outputs.user_pool_client_id }}
-        run: |
-          npm ci
-          npm run build
- 
-      - name: Upload to S3
-        if: hashFiles('frontend/package.json') != ''
-        run: |
-          B="${{ steps.stack.outputs.bucket }}"
-          # assets com hash no nome -> cache longa; index.html -> sempre revalidado
-          aws s3 sync frontend/dist "s3://$B" --delete \
-            --exclude index.html \
-            --cache-control "public,max-age=31536000,immutable"
-          aws s3 cp frontend/dist/index.html "s3://$B/index.html" \
-            --cache-control "no-cache"
- 
-      - name: Invalidate CloudFront
-        if: hashFiles('frontend/package.json') != ''
-        run: |
-          aws cloudfront create-invalidation \
-            --distribution-id "${{ steps.stack.outputs.distribution }}" \
-            --paths "/*"
- 
-      - name: Summary
-        run: |
-          echo "API: ${{ steps.stack.outputs.api_url }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "Frontend: ${{ steps.stack.outputs.frontend_url }}" >> "$GITHUB_STEP_SUMMARY"
- 
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: gymsoftware - gestao de ginasio serverless (API + Cognito + DynamoDB + frontend estatico)
+
+# Nomes fisicos gerados pelo CloudFormation ("gymsoftware-<LogicalId>-<sufixo>"):
+# batem com o prefixo gymsoftware-* das permissoes da role de deploy e
+# permitem substituir recursos sem colisoes de nomes.
+
+Globals:
+  Function:
+    Runtime: python3.13
+    Architectures: [arm64]        # Graviton: ~20% mais barato que x86
+    MemorySize: 256
+    Timeout: 10
+
+Resources:
+  # ------------------------------------------------------------------ Dados
+  Table:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain          # apagar a stack NUNCA apaga os dados
+    UpdateReplacePolicy: Retain
+    Properties:
+      BillingMode: PAY_PER_REQUEST  # on-demand: paga-se por pedido, 0 em repouso
+      AttributeDefinitions:
+        - { AttributeName: PK, AttributeType: S }
+        - { AttributeName: SK, AttributeType: S }
+        - { AttributeName: GSI1PK, AttributeType: S }
+        - { AttributeName: GSI1SK, AttributeType: S }
+      KeySchema:
+        - { AttributeName: PK, KeyType: HASH }
+        - { AttributeName: SK, KeyType: RANGE }
+      GlobalSecondaryIndexes:
+        - IndexName: GSI1
+          KeySchema:
+            - { AttributeName: GSI1PK, KeyType: HASH }
+            - { AttributeName: GSI1SK, KeyType: RANGE }
+          Projection:
+            ProjectionType: ALL
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+
+  # ------------------------------------------------------------------ Autenticacao
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub "${AWS::StackName}-users"
+      UserPoolTier: LITE
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: true   # sem registo publico
+      UsernameAttributes: [email]
+      AutoVerifiedAttributes: [email]
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - { Name: verified_email, Priority: 1 }
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 12
+          RequireLowercase: true
+          RequireUppercase: true
+          RequireNumbers: true
+          RequireSymbols: false
+          TemporaryPasswordValidityDays: 7
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Sub "${AWS::StackName}-web"
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false             # SPA no browser nao consegue guardar segredos
+      ExplicitAuthFlows:
+        - ALLOW_USER_SRP_AUTH           # password nunca viaja em claro
+        - ALLOW_REFRESH_TOKEN_AUTH
+      PreventUserExistenceErrors: ENABLED
+      EnableTokenRevocation: true
+
+  # ------------------------------------------------------------------ API
+  HttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      DefaultRouteSettings:             # travao de custos contra abusos
+        ThrottlingBurstLimit: 50
+        ThrottlingRateLimit: 20
+      CorsConfiguration:
+        AllowOrigins:
+          - !Sub "https://${Distribution.DomainName}"
+          - http://localhost:5173       # npm run dev (Vite)
+        AllowHeaders: [authorization, content-type]
+        AllowMethods: [GET, POST, PUT, PATCH, DELETE, OPTIONS]
+        MaxAge: 600
+      Auth:
+        DefaultAuthorizer: CognitoJwt
+        Authorizers:
+          CognitoJwt:
+            IdentitySource: $request.header.Authorization
+            JwtConfiguration:
+              issuer: !Sub "https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}"
+              audience:                 # access tokens nao tem "aud": o API GW valida client_id
+                - !Ref UserPoolClient
+
+  ApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: backend/
+      Handler: app.lambda_handler
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref Table
+          POWERTOOLS_SERVICE_NAME: gymsoftware
+          POWERTOOLS_LOG_LEVEL: INFO
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref Table
+      Events:
+        Health:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /health
+            Method: GET
+            Auth:
+              Authorizer: NONE          # publico: usado no smoke test do deploy
+        Proxy:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /{proxy+}
+            Method: ANY
+
+  ApiFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${ApiFunction}"
+      RetentionInDays: 14               # sem isto os logs ficam (e pagam-se) para sempre
+
+  # ------------------------------------------------------------------ Frontend
+  FrontendBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      PublicAccessBlockConfiguration:   # bucket 100% privado; so o CloudFront le
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  FrontendBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref FrontendBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowCloudFrontOAC
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub "${FrontendBucket.Arn}/*"
+            Condition:
+              StringEquals:             # so ESTA distribuicao, nao qualquer CloudFront
+                AWS:SourceArn: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${Distribution}"
+
+  OriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub "${AWS::StackName}-oac"
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  Distribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: !Sub "${AWS::StackName} frontend"
+        PriceClass: PriceClass_100      # so edges EU/NA: mais barato
+        HttpVersion: http2and3
+        IPV6Enabled: true
+        DefaultRootObject: index.html
+        Origins:
+          - Id: s3-frontend
+            DomainName: !GetAtt FrontendBucket.RegionalDomainName
+            OriginAccessControlId: !GetAtt OriginAccessControl.Id
+            S3OriginConfig:
+              OriginAccessIdentity: ""  # vazio = usar OAC em vez do OAI antigo
+        DefaultCacheBehavior:
+          TargetOriginId: s3-frontend
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD]
+          Compress: true
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6  # Managed-CachingOptimized
+        CustomErrorResponses:           # SPA routing: rotas do React servem index.html
+          - { ErrorCode: 403, ResponseCode: 200, ResponsePagePath: /index.html, ErrorCachingMinTTL: 0 }
+          - { ErrorCode: 404, ResponseCode: 200, ResponsePagePath: /index.html, ErrorCachingMinTTL: 0 }
+
+Outputs:
+  # Os nomes abaixo sao lidos pelo .github/workflows/deploy.yml - nao mudar sem atualizar la.
+  ApiUrl:
+    Value: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com"
+  FrontendBucketName:
+    Value: !Ref FrontendBucket
+  DistributionId:
+    Value: !Ref Distribution
+  FrontendUrl:
+    Value: !Sub "https://${Distribution.DomainName}"
+  UserPoolId:
+    Value: !Ref UserPool
+  UserPoolClientId:
+    Value: !Ref UserPoolClient
+  TableName:
+    Value: !Ref Table
