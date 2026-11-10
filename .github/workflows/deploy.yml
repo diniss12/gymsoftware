@@ -1,114 +1,37 @@
-name: Deploy
- 
+name: Deploy to AWS
+
 on:
   push:
-    branches: [main]
-  workflow_dispatch:        # permite correr à mão no separador Actions
- 
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
 permissions:
-  id-token: write           # necessário para pedir o token OIDC
+  id-token: write
   contents: read
- 
-concurrency:                # nunca dois deploys em paralelo na mesma stack
-  group: deploy-prod
-  cancel-in-progress: false
- 
-env:
-  AWS_REGION: eu-west-1
-  STACK_NAME: gymsoftware     # tem de bater com o prefixo das permissões da role
- 
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
- 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"     # tem de bater com o Runtime do template
- 
-      - uses: aws-actions/setup-sam@v2
-        with:
-          use-installer: true
- 
-      - uses: aws-actions/configure-aws-credentials@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Debug OIDC claims
+        run: |
+          TOKEN=$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.amazonaws.com" | jq -r .value)
+          echo "$TOKEN" | cut -d. -f2 | python3 -c \
+            "import sys,base64,json; p=sys.stdin.read().strip(); p+='='*(-len(p)%4); \
+             c=json.loads(base64.urlsafe_b64decode(p)); \
+             print(json.dumps({k:c.get(k) for k in ['sub','aud','iss','repository','ref']}, indent=2))"
+
+      - name: Configure AWS Credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::659791935620:role/GitHubActions-diniss12-gymsoftware
-          aws-region: ${{ env.AWS_REGION }}
- 
-      # ---------------------------------------------------------- Backend + infra
-      - name: SAM build
-        run: sam build
- 
-      - name: SAM deploy
+          aws-region: eu-west-1
+          audience: sts.amazonaws.com
+          role-skip-session-tagging: true
+
+      - name: Test AWS Connection
         run: |
-          sam deploy \
-            --stack-name "$STACK_NAME" \
-            --region "$AWS_REGION" \
-            --resolve-s3 \
-            --capabilities CAPABILITY_IAM \
-            --no-confirm-changeset \
-            --no-fail-on-empty-changeset
- 
-      - name: Read stack outputs
-        id: stack
-        run: |
-          get() {
-            aws cloudformation describe-stacks --stack-name "$STACK_NAME" \
-              --query "Stacks[0].Outputs[?OutputKey=='$1'].OutputValue" --output text
-          }
-          {
-            echo "api_url=$(get ApiUrl)"
-            echo "bucket=$(get FrontendBucketName)"
-            echo "distribution=$(get DistributionId)"
-            echo "frontend_url=$(get FrontendUrl)"
-            echo "user_pool_id=$(get UserPoolId)"
-            echo "user_pool_client_id=$(get UserPoolClientId)"
-          } >> "$GITHUB_OUTPUT"
- 
-      - name: Smoke test API
-        run: curl -fsS "${{ steps.stack.outputs.api_url }}/health"
- 
-      # ---------------------------------------------------------- Frontend
-      # Os passos abaixo são saltados enquanto não existir frontend/package.json
-      - uses: actions/setup-node@v4
-        if: hashFiles('frontend/package.json') != ''
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
- 
-      - name: Build frontend
-        if: hashFiles('frontend/package.json') != ''
-        working-directory: frontend
-        env:                          # o Vite injeta VITE_* no bundle em build time
-          VITE_API_URL: ${{ steps.stack.outputs.api_url }}
-          VITE_USER_POOL_ID: ${{ steps.stack.outputs.user_pool_id }}
-          VITE_USER_POOL_CLIENT_ID: ${{ steps.stack.outputs.user_pool_client_id }}
-        run: |
-          npm ci
-          npm run build
- 
-      - name: Upload to S3
-        if: hashFiles('frontend/package.json') != ''
-        run: |
-          B="${{ steps.stack.outputs.bucket }}"
-          # assets com hash no nome -> cache longa; index.html -> sempre revalidado
-          aws s3 sync frontend/dist "s3://$B" --delete \
-            --exclude index.html \
-            --cache-control "public,max-age=31536000,immutable"
-          aws s3 cp frontend/dist/index.html "s3://$B/index.html" \
-            --cache-control "no-cache"
- 
-      - name: Invalidate CloudFront
-        if: hashFiles('frontend/package.json') != ''
-        run: |
-          aws cloudfront create-invalidation \
-            --distribution-id "${{ steps.stack.outputs.distribution }}" \
-            --paths "/*"
- 
-      - name: Summary
-        run: |
-          echo "API: ${{ steps.stack.outputs.api_url }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "Frontend: ${{ steps.stack.outputs.frontend_url }}" >> "$GITHUB_STEP_SUMMARY"
- 
+          aws sts get-caller-identity
