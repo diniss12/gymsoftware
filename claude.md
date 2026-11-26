@@ -48,10 +48,12 @@ Máx. ~300 sócios → GET /socios devolve todos (~300 KB, 1 Query); pesquisa po
 Itens (single-table):
   SOCIO#<id> / PERFIL            GSI1: SOCIOS / <nome normalizado>#<id>   (planoId, planoDesde, periodoAtual copiados para a ficha)
   SOCIO#<id> / PERIODO#<ulid>    GSI1: PERIODOS / <dataInicio>#<ulid>   histórico (ULID ordena por criação; datas em atributos). No GSI1 para GET /periodos (receita por mês) sem Scan.
+  SOCIO#<id> / PAGAMENTO#<AAAA-MM>  GSI1: PAGAMENTOS / <mes>#<socioId>   1 pagamento por sócio e mês (attribute_not_exists → 409); campos: mes, valor (cêntimos), metodo MBWAY|DINHEIRO, dataPagamento, notas. Apagar = DELETE para corrigir.
   NIF#<nif>  / NIF               garante unicidade via transação com attribute_not_exists
   PLANO#<id> / PLANO             GSI1: PLANOS / <nome normalizado>#<id>
+Pagamentos (regras no frontend, util.js): mensalidade do mês M vence no dia 8 de M+1 (DIA_LIMITE); depois fica "em atraso" no painel Início (/). Um sócio deve cada mês em que teve plano em vigor (≥1 dia), pelo preço do último plano desse mês. Cobrança só a partir de INICIO_COBRANCA = 2026-11 (meses anteriores nunca são dívida). Pode pagar-se adiantado até ao mês seguinte. Estatística "pagamentos por método" = valor recebido nos últimos 12 meses por dataPagamento.
 Escritas de sócio são transações; ficha usa lock otimista (condição atualizadoEm = valor lido).
-API: GET/POST /planos, PUT /planos/{id}; GET /periodos (todos, com socioId); GET /socios[?estado=], GET/PUT /socios/{id}, POST /socios (planoId obrigatório), POST /socios/{id}/plano {planoId, data?}, /inativar {data?}, /reativar {planoId, data?}. Erros: {"message"} com 400/404/409.
+API: GET/POST /planos, PUT /planos/{id}; GET /periodos (todos, com socioId); GET /pagamentos[?desde=AAAA-MM]; POST /socios/{id}/pagamentos {mes, valor, metodo, dataPagamento?, notas?}; DELETE /socios/{id}/pagamentos/{mes}; GET /socios/{id} inclui historico + pagamentos; GET /socios[?estado=], GET/PUT /socios/{id}, POST /socios (planoId obrigatório), POST /socios/{id}/plano {planoId, data?}, /inativar {data?}, /reativar {planoId, data?}. Erros: {"message"} com 400/404/409.
 AWS
 Conta 659791935620, região eu-west-1, stack gymsoftware.
 Role de deploy: arn:aws:iam::659791935620:role/GitHubActions-diniss12-gymsoftware (ARN, região e stack estão hardcoded no deploy.yml, sem secrets/variables no GitHub).

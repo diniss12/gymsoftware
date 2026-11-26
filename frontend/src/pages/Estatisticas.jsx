@@ -6,10 +6,9 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api.js'
 import { useDados } from '../dados.jsx'
-import { FAIXAS, SEXOS, euros, faixaEtaria, hojeISO, idade, normalizar } from '../util.js'
+import { FAIXAS, MESES, METODOS, SEXOS, euros, faixaEtaria, hojeISO, idade, mesAnterior, normalizar } from '../util.js'
 import { Aguardar, Cabecalho, Erro } from './comum.jsx'
 
-const MESES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
 const pad = (n) => String(n).padStart(2, '0')
 
 export default function Estatisticas() {
@@ -72,9 +71,31 @@ function Painel() {
   const [periodos, setPeriodos] = useState(null)
   const [erroPeriodos, setErroPeriodos] = useState('')
 
+  const [pagamentos, setPagamentos] = useState(null)
+
   useEffect(() => {
     api('/periodos').then(setPeriodos).catch((e) => setErroPeriodos(e.message))
   }, [socios]) // recarrega se a lista de socios mudar (ex.: mudanca de plano)
+
+  // Pagamentos dos ultimos 12 meses (pela data em que foram pagos). Pede-se a
+  // partir de 13 meses de referencia atras para apanhar quem pagou com atraso.
+  const desde12 = mesAnterior(hojeISO().slice(0, 7), 11)
+  useEffect(() => {
+    api(`/pagamentos?desde=${mesAnterior(desde12, 1)}`)
+      .then((lista) => setPagamentos(lista.filter((p) => p.dataPagamento >= `${desde12}-01`)))
+      .catch((e) => setErroPeriodos(e.message))
+  }, [desde12])
+
+  const linhasMetodo = useMemo(() => {
+    if (!pagamentos) return null
+    const valor = contar(pagamentos, (p) => p.metodo, (p) => p.valor)
+    const n = contar(pagamentos, (p) => p.metodo)
+    return Object.entries(METODOS).map(([k, nome]) => ({
+      rotulo: `${nome} · ${n.get(k) ?? 0}`,
+      valor: valor.get(k) ?? 0,
+      dica: `${n.get(k) ?? 0} pagamento(s)`,
+    }))
+  }, [pagamentos])
 
   const e = useMemo(() => {
     const hoje = hojeISO()
@@ -166,6 +187,10 @@ function Painel() {
             {meses && <Colunas meses={meses} />}
           </section>
 
+          {linhasMetodo && (
+            <Barras titulo="Pagamentos por método" linhas={linhasMetodo} formato={euros} largura="9ch"
+              nota="Valor recebido nos últimos 12 meses · número de pagamentos ao lado do método." />
+          )}
           <Barras titulo="Receita mensal por sexo" linhas={e.linhasSexo} formato={euros} largura="9ch"
             nota={e.semSexo ? `${e.semSexo} sócio(s) sem sexo indicado não entram aqui.` : null} />
           <Barras titulo="Por plano" linhas={e.linhasPlano} />

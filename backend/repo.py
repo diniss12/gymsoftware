@@ -4,6 +4,7 @@ Itens:
     PK            SK               GSI1PK   GSI1SK
     SOCIO#<id>    PERFIL           SOCIOS   <nome normalizado>#<id>   ficha do socio
     SOCIO#<id>    PERIODO#<pid>    PERIODOS <dataInicio>#<pid>        historico de planos
+    SOCIO#<id>    PAGAMENTO#<mes>  PAGAMENTOS <mes>#<id>              pagamento de um mes (AAAA-MM)
     NIF#<nif>     NIF              -        -                         garante NIF unico
     PLANO#<id>    PLANO            PLANOS   <nome normalizado>#<id>   definicao do plano
 
@@ -154,14 +155,63 @@ def listar_periodos() -> list[dict]:
     return [{**_limpo(i), "socioId": i["PK"].removeprefix("SOCIO#")} for i in itens]
 
 
-def obter_socio(socio_id: str) -> tuple[dict, list[dict]] | None:
-    """Ficha + historico de planos (mais antigo primeiro), numa so Query."""
+def obter_socio_completo(socio_id: str) -> tuple[dict, list[dict], list[dict]] | None:
+    """Ficha + historico de planos + pagamentos, numa so Query a particao do
+    socio (tudo partilha PK = SOCIO#<id>). Periodos por ordem de criacao,
+    pagamentos por mes (a SK PAGAMENTO#AAAA-MM ordena cronologicamente)."""
     itens = _query_tudo(KeyConditionExpression=Key("PK").eq(f"SOCIO#{socio_id}"))
     perfil = next((i for i in itens if i["SK"] == "PERFIL"), None)
     if not perfil:
         return None
     periodos = [_limpo(i) for i in itens if i["SK"].startswith("PERIODO#")]
-    return _limpo(perfil), periodos
+    pagamentos = [_limpo(i) for i in itens if i["SK"].startswith("PAGAMENTO#")]
+    return _limpo(perfil), periodos, pagamentos
+
+
+def obter_socio(socio_id: str) -> tuple[dict, list[dict]] | None:
+    r = obter_socio_completo(socio_id)
+    return (r[0], r[1]) if r else None
+
+
+# ================================================================ pagamentos
+def _chave_pagamento(socio_id: str, mes: str) -> dict:
+    return {"PK": f"SOCIO#{socio_id}", "SK": f"PAGAMENTO#{mes}"}
+
+
+def criar_pagamento(p: dict):
+    """Um pagamento por socio e mes: a SK inclui o mes e a condicao
+    attribute_not_exists impede um segundo registo para o mesmo mes."""
+    item = {
+        **_chave_pagamento(p["socioId"], p["mes"]),
+        # GSI1 PAGAMENTOS/<mes>#<socio>: todos os pagamentos a partir de um mes
+        # numa Query (painel de atrasos e estatisticas), sem Scan.
+        "GSI1PK": "PAGAMENTOS",
+        "GSI1SK": f"{p['mes']}#{p['socioId']}",
+        **p,
+    }
+    try:
+        tabela().put_item(Item=item, ConditionExpression="attribute_not_exists(PK)")
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+            raise ErroApi(409, f"Já existe um pagamento registado para {p['mes']}") from None
+        raise
+
+
+def apagar_pagamento(socio_id: str, mes: str):
+    try:
+        tabela().delete_item(Key=_chave_pagamento(socio_id, mes), ConditionExpression="attribute_exists(PK)")
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+            raise ErroApi(404, "Pagamento não encontrado") from None
+        raise
+
+
+def listar_pagamentos(desde: str) -> list[dict]:
+    itens = _query_tudo(
+        IndexName="GSI1",
+        KeyConditionExpression=Key("GSI1PK").eq("PAGAMENTOS") & Key("GSI1SK").gte(desde),
+    )
+    return [_limpo(i) for i in itens]
 
 
 def _put(item: dict, cond: str | None = None, valores: dict | None = None) -> dict:

@@ -294,3 +294,81 @@ def test_periodos_de_todos_os_socios():
     assert {p["socioId"] for p in periodos} == {a["id"], b["id"]}
     fechado = next(p for p in periodos if p["socioId"] == a["id"] and p["planoId"] == p3["id"])
     assert fechado["dataFim"] == "2026-03-01" and "GSI1PK" not in fechado
+
+
+# ---------------------------------------------------------------- pagamentos
+def pagamento(mes="2026-07", **extra):
+    return {"mes": mes, "valor": 2500, "metodo": "MBWAY", "dataPagamento": "2026-08-03", "notas": "pago no balcão", **extra}
+
+
+def test_registar_e_ver_pagamento_na_ficha():
+    plano = criar_plano()
+    _, socio = pedido("POST", "/socios", dados_socio(plano["id"]))
+    s, p = pedido("POST", f"/socios/{socio['id']}/pagamentos", pagamento())
+    assert s == 201, p
+    assert p["mes"] == "2026-07" and p["valor"] == 2500 and p["metodo"] == "MBWAY" and p["notas"] == "pago no balcão"
+
+    pedido("POST", f"/socios/{socio['id']}/pagamentos", pagamento("2026-06", metodo="DINHEIRO", notas=""))
+    _, ficha = pedido("GET", f"/socios/{socio['id']}")
+    assert [x["mes"] for x in ficha["pagamentos"]] == ["2026-06", "2026-07"]  # ordenados por mes
+    assert len(ficha["historico"]) == 1  # pagamentos nao se misturam com o historico de planos
+
+
+def test_pagamento_duplicado_no_mesmo_mes():
+    plano = criar_plano()
+    _, socio = pedido("POST", "/socios", dados_socio(plano["id"]))
+    assert pedido("POST", f"/socios/{socio['id']}/pagamentos", pagamento())[0] == 201
+    s, e = pedido("POST", f"/socios/{socio['id']}/pagamentos", pagamento(valor=100))
+    assert s == 409 and "2026-07" in e["message"]
+
+
+@pytest.mark.parametrize(
+    "extra,mensagem",
+    [
+        ({"metodo": "MULTIBANCO"}, "metodo"),
+        ({"metodo": None}, "metodo"),
+        ({"mes": "2026-13"}, "AAAA-MM"),
+        ({"mes": "07/2026"}, "AAAA-MM"),
+        ({"mes": "2025-12"}, "anterior à entrada"),
+        ({"mes": "2099-01"}, "adiantado"),
+        ({"valor": 25.5}, "valor"),
+        ({"dataPagamento": "2999-01-01"}, "futura"),
+    ],
+)
+def test_pagamento_invalido(extra, mensagem):
+    plano = criar_plano()
+    _, socio = pedido("POST", "/socios", dados_socio(plano["id"]))
+    s, e = pedido("POST", f"/socios/{socio['id']}/pagamentos", pagamento(**extra))
+    assert s == 400 and mensagem in e["message"], e
+
+
+def test_pagamento_socio_inexistente():
+    assert pedido("POST", "/socios/naoexiste/pagamentos", pagamento())[0] == 404
+
+
+def test_apagar_pagamento():
+    plano = criar_plano()
+    _, socio = pedido("POST", "/socios", dados_socio(plano["id"]))
+    pedido("POST", f"/socios/{socio['id']}/pagamentos", pagamento())
+    s, _ = pedido("DELETE", f"/socios/{socio['id']}/pagamentos/2026-07")
+    assert s == 200
+    assert pedido("DELETE", f"/socios/{socio['id']}/pagamentos/2026-07")[0] == 404
+    _, ficha = pedido("GET", f"/socios/{socio['id']}")
+    assert ficha["pagamentos"] == []
+    assert pedido("POST", f"/socios/{socio['id']}/pagamentos", pagamento())[0] == 201  # pode voltar a registar
+
+
+def test_listar_pagamentos_desde():
+    plano = criar_plano()
+    _, a = pedido("POST", "/socios", dados_socio(plano["id"]))
+    _, b = pedido("POST", "/socios", dados_socio(plano["id"], nif=NIF_B, nome="B"))
+    pedido("POST", f"/socios/{a['id']}/pagamentos", pagamento("2026-05"))
+    pedido("POST", f"/socios/{a['id']}/pagamentos", pagamento("2026-07"))
+    pedido("POST", f"/socios/{b['id']}/pagamentos", pagamento("2026-07", metodo="DINHEIRO"))
+
+    _, todos = pedido("GET", "/pagamentos")
+    assert len(todos) == 3
+    _, recentes = pedido("GET", "/pagamentos", query={"desde": "2026-06"})
+    assert sorted((p["mes"], p["socioId"]) for p in recentes) == sorted([("2026-07", a["id"]), ("2026-07", b["id"])])
+    assert "GSI1PK" not in recentes[0]
+    assert pedido("GET", "/pagamentos", query={"desde": "junho"})[0] == 400

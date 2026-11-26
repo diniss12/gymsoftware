@@ -169,8 +169,52 @@ def listar_periodos():
 
 @app.get("/socios/<socio_id>")
 def obter_socio(socio_id: str):
-    socio, periodos = _carregar(socio_id)
-    return {**socio, "historico": periodos}
+    r = repo.obter_socio_completo(socio_id)
+    if not r:
+        raise ErroApi(404, "Sócio não encontrado")
+    socio, periodos, pagamentos = r
+    return {**socio, "historico": periodos, "pagamentos": pagamentos}
+
+
+# ================================================================ pagamentos
+@app.get("/pagamentos")
+def listar_pagamentos():
+    """Pagamentos de todos os socios a partir de ?desde=AAAA-MM (por omissao, todos)."""
+    desde = app.current_event.get_query_string_value("desde")
+    if desde:
+        v.mes({"desde": desde}, "desde")
+    return repo.listar_pagamentos(desde or "0000-00")
+
+
+@app.post("/socios/<socio_id>/pagamentos")
+def registar_pagamento(socio_id: str):
+    """Regista o pagamento da mensalidade de um mes (um so por mes e socio)."""
+    socio, _ = _carregar(socio_id)
+    body = corpo()
+    mes = v.mes(body, "mes")
+    if mes < socio["dataEntrada"][:7]:
+        raise ErroApi(400, "Mês anterior à entrada do sócio no ginásio")
+    if mes > v.mes_seguinte(v.hoje().isoformat()[:7]):
+        raise ErroApi(400, "Só se pode pagar adiantado até ao mês seguinte")
+    pagamento = {
+        "tipo": "PAGAMENTO",
+        "socioId": socio_id,
+        "mes": mes,
+        "valor": v.inteiro(body, "valor", minimo=0, maximo=100_000),  # centimos
+        "metodo": v.metodo(body),
+        "dataPagamento": v.nao_futura(v.data(body, "dataPagamento", padrao=v.hoje()), "dataPagamento").isoformat(),
+        "notas": v.texto(body, "notas", max_len=500, obrigatorio=False),
+        "criadoEm": v.agora_iso(),
+    }
+    repo.criar_pagamento(pagamento)
+    return Response(status_code=201, content_type="application/json", body=json.dumps(pagamento, ensure_ascii=False))
+
+
+@app.delete("/socios/<socio_id>/pagamentos/<mes>")
+def apagar_pagamento(socio_id: str, mes: str):
+    """Para corrigir um registo errado: apaga e volta-se a registar."""
+    repo.apagar_pagamento(socio_id, v.mes({"mes": mes}, "mes"))
+    return {"apagado": mes}
 
 
 @app.post("/socios")

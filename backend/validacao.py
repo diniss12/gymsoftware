@@ -98,6 +98,33 @@ def nao_futura(d: date, campo: str) -> date:
     return d
 
 
+def mes(body: dict, campo: str) -> str:
+    """Mes de referencia 'AAAA-MM' (ex.: '2026-07' = mensalidade de julho)."""
+    valor = body.get(campo)
+    try:
+        date.fromisoformat(f"{valor}-01")
+        if len(valor) != 7:
+            raise ValueError
+    except (TypeError, ValueError):
+        raise ErroApi(400, f"'{campo}' tem de ser um mês AAAA-MM") from None
+    return valor
+
+
+def mes_seguinte(m: str) -> str:
+    y, mm = int(m[:4]), int(m[5:7])
+    return f"{y + 1}-01" if mm == 12 else f"{y}-{mm + 1:02d}"
+
+
+METODOS = ("MBWAY", "DINHEIRO")
+
+
+def metodo(body: dict) -> str:
+    valor = body.get("metodo")
+    if valor not in METODOS:
+        raise ErroApi(400, "'metodo' tem de ser 'MBWAY' ou 'DINHEIRO'")
+    return valor
+
+
 SEXOS = ("M", "F")
 
 

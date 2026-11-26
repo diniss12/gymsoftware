@@ -260,6 +260,38 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .plano-cartao .btn { margin-top: 12px; }
 .plano-form { grid-column: 1 / -1; }
 
+/* ------------------------------------------------------------------ pagamentos */
+.tile-alerta { border-color: var(--red); border-top: 4px solid var(--red2); }
+.tile-alerta .tile-valor { color: var(--red2); }
+.vazio-ok { border-style: solid; color: var(--text); }
+.chip {
+  display: inline-block; padding: 3px 10px; font-size: .72rem; font-weight: 700; letter-spacing: .04em;
+  border: 1px solid var(--line); border-radius: 2px; background: var(--bg2); white-space: nowrap;
+}
+.chip-atraso { border-color: var(--red2); color: #ff8a98; background: rgba(200,16,46,.12); }
+.por-pagar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.celula-chips { display: flex; flex-wrap: wrap; gap: 6px; white-space: normal !important; }
+.celula-notas { white-space: normal !important; max-width: 40ch; color: var(--muted); font-size: .85rem; }
+.seta { font-size: .7rem; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+.tabela-clicavel tbody tr:hover .seta { color: var(--red2); }
+.btn-texto {
+  background: none; border: 0; cursor: pointer; font-size: .7rem; font-weight: 800; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--muted);
+}
+.btn-texto:hover { color: var(--red2); }
+.metodos { border: 0; display: flex; flex-wrap: wrap; gap: 10px; }
+.metodos legend {
+  font-size: .68rem; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px;
+}
+.painel-acao label.metodo {
+  display: flex; align-items: center; gap: 10px; padding: .75em 1.2em; cursor: pointer;
+  border: 2px solid var(--line); border-radius: 2px; font-size: .85rem; font-weight: 800;
+  letter-spacing: .1em; color: var(--text);
+}
+.metodo input { width: auto !important; accent-color: var(--red); }
+.painel-acao label.metodo-ativo { border-color: var(--red2); background: rgba(200,16,46,.12); }
+.painel-notas { max-width: 640px; }
+
 /* ------------------------------------------------------------------ telemovel */
 @media (max-width: 760px) {
   .nav .wrap { height: auto; padding: 12px 0; flex-direction: column; gap: 10px; }

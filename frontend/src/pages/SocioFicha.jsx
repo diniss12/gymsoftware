@@ -4,6 +4,7 @@ import { api } from '../api.js'
 import { useDados } from '../dados.jsx'
 import { SEXOS, dataPt, euros, hojeISO, idade, vezes } from '../util.js'
 import { Aguardar, Cabecalho, Erro } from './comum.jsx'
+import { HistoricoPagamentos, RegistarPagamento } from './Pagamentos.jsx'
 
 export default function SocioFicha() {
   return (
@@ -18,7 +19,7 @@ function Ficha() {
   const { planoPorId, guardarSocio } = useDados()
   const [socio, setSocio] = useState(null)
   const [erro, setErro] = useState('')
-  const [acao, setAcao] = useState(null) // 'plano' | 'inativar' | 'reativar'
+  const [acao, setAcao] = useState(null) // 'pagamento' | 'plano' | 'inativar' | 'reativar'
 
   useEffect(() => {
     setSocio(null)
@@ -32,6 +33,11 @@ function Ficha() {
     guardarSocio(s)
     setAcao(null)
   }
+  const pagamentoRegistado = (p) => {
+    setSocio((s) => ({ ...s, pagamentos: [...s.pagamentos, p].sort((a, b) => a.mes.localeCompare(b.mes)) }))
+    setAcao(null)
+  }
+  const pagamentoApagado = (mes) => setSocio((s) => ({ ...s, pagamentos: s.pagamentos.filter((p) => p.mes !== mes) }))
   const ativo = socio.estado === 'ATIVO'
   const plano = planoPorId[socio.planoId]
   const historico = [...socio.historico].reverse() // mais recente primeiro
@@ -39,6 +45,7 @@ function Ficha() {
   return (
     <>
       <Cabecalho eyebrow={ativo ? 'Sócio ativo' : `Inativo desde ${dataPt(socio.dataSaida)}`} titulo={socio.nome}>
+        <button className="btn btn-red" onClick={() => setAcao('pagamento')}>Registar pagamento</button>
         <Link to={`/socios/${id}/editar`} className="btn btn-ghost">Editar dados</Link>
         {ativo ? (
           <>
@@ -46,11 +53,16 @@ function Ficha() {
             <button className="btn btn-ghost" onClick={() => setAcao('inativar')}>Inativar</button>
           </>
         ) : (
-          <button className="btn btn-red" onClick={() => setAcao('reativar')}>Reativar</button>
+          <button className="btn btn-ghost" onClick={() => setAcao('reativar')}>Reativar</button>
         )}
       </Cabecalho>
 
-      {acao && <Acao acao={acao} socio={socio} onFeito={atualizado} onCancelar={() => setAcao(null)} />}
+      {acao === 'pagamento' && (
+        <RegistarPagamento socio={socio} onFeito={pagamentoRegistado} onCancelar={() => setAcao(null)} />
+      )}
+      {acao && acao !== 'pagamento' && (
+        <Acao acao={acao} socio={socio} onFeito={atualizado} onCancelar={() => setAcao(null)} />
+      )}
 
       <div className="ficha-grelha">
         <section className="cartao cartao-destaque">
@@ -83,6 +95,8 @@ function Ficha() {
           </section>
         )}
       </div>
+
+      <HistoricoPagamentos socio={socio} onApagado={pagamentoApagado} />
 
       <h2 className="subtitulo">Histórico de planos</h2>
       <div className="tabela-scroll">

@@ -8,6 +8,7 @@ import SocioFicha from './pages/SocioFicha.jsx'
 import SocioForm from './pages/SocioForm.jsx'
 import Estatisticas from './pages/Estatisticas.jsx'
 import Planos from './pages/Planos.jsx'
+import Inicio from './pages/Inicio.jsx'
 import logo from './assets/logo.png'
 
 export default function App() {
@@ -36,10 +37,11 @@ export default function App() {
       <DadosProvider>
         <header className="nav">
           <div className="wrap">
-            <NavLink to="/socios" className="nav-logo" aria-label="Início">
+            <NavLink to="/" className="nav-logo" aria-label="Início">
               <img src={logo} alt="Ativo Fitness" />
             </NavLink>
             <nav>
+              <NavLink to="/" end>Início</NavLink>
               <NavLink to="/socios">Sócios</NavLink>
               <NavLink to="/estatisticas">Estatísticas</NavLink>
               <NavLink to="/planos">Planos</NavLink>
@@ -49,13 +51,14 @@ export default function App() {
         </header>
         <main className="wrap conteudo">
           <Routes>
+            <Route path="/" element={<Inicio />} />
             <Route path="/socios" element={<Socios />} />
             <Route path="/socios/novo" element={<SocioForm />} />
             <Route path="/socios/:id" element={<SocioFicha />} />
             <Route path="/socios/:id/editar" element={<SocioForm />} />
             <Route path="/estatisticas" element={<Estatisticas />} />
             <Route path="/planos" element={<Planos />} />
-            <Route path="*" element={<Navigate to="/socios" replace />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>
       </DadosProvider>
