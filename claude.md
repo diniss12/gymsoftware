@@ -40,17 +40,18 @@ frontend/src/pages/            # Socios, SocioForm, SocioFicha, Estatisticas, Pl
 
 Domínio e modelo de dados
 "Sócios" = clientes do ginásio (não confundir com o utilizador Cognito, que é só o dono).
-Sócio: id (ULID interno), nome, nif (obrigatório, único, dígito de controlo validado), dataNascimento, dataEntrada (hoje ou anterior, nunca futura), morada, localidade, notas, plano obrigatório, estado ATIVO/INATIVO (sair = inativar, nunca apagar).
+Sócio: id (ULID interno), nome, nif (obrigatório, único, dígito de controlo validado), sexo ('M'/'F', obrigatório), dataNascimento, dataEntrada (hoje ou anterior, nunca futura), morada, localidade, notas, plano obrigatório, estado ATIVO/INATIVO (sair = inativar, nunca apagar).
 Planos: mensais, sem fidelização, 1× a 6× por semana = 21/23/25/27/29/30 €. Preços em cêntimos (int).
 Histórico de planos importa: cada mudança fecha o período atual (dataFim exclusiva = início do seguinte) e abre outro. Períodos guardam cópia de nome/preço do plano (mudar o preço não reescreve o histórico).
+Receita por mês (estatísticas): conta o último plano em vigor de cada sócio em cada mês; é receita PREVISTA pelos planos (pagamentos ainda não existem).
 Máx. ~300 sócios → GET /socios devolve todos (~300 KB, 1 Query); pesquisa por nome/NIF e estatísticas (por plano, localidade, idade, aniversariantes, inativos) calculadas no frontend, sem GSIs extra. Idade nunca é guardada. Rever se passar de alguns milhares.
 Itens (single-table):
   SOCIO#<id> / PERFIL            GSI1: SOCIOS / <nome normalizado>#<id>   (planoId, planoDesde, periodoAtual copiados para a ficha)
-  SOCIO#<id> / PERIODO#<ulid>    histórico (ULID ordena por criação; datas em atributos para se poderem corrigir)
+  SOCIO#<id> / PERIODO#<ulid>    GSI1: PERIODOS / <dataInicio>#<ulid>   histórico (ULID ordena por criação; datas em atributos). No GSI1 para GET /periodos (receita por mês) sem Scan.
   NIF#<nif>  / NIF               garante unicidade via transação com attribute_not_exists
   PLANO#<id> / PLANO             GSI1: PLANOS / <nome normalizado>#<id>
 Escritas de sócio são transações; ficha usa lock otimista (condição atualizadoEm = valor lido).
-API: GET/POST /planos, PUT /planos/{id}; GET /socios[?estado=], GET/PUT /socios/{id}, POST /socios (planoId obrigatório), POST /socios/{id}/plano {planoId, data?}, /inativar {data?}, /reativar {planoId, data?}. Erros: {"message"} com 400/404/409.
+API: GET/POST /planos, PUT /planos/{id}; GET /periodos (todos, com socioId); GET /socios[?estado=], GET/PUT /socios/{id}, POST /socios (planoId obrigatório), POST /socios/{id}/plano {planoId, data?}, /inativar {data?}, /reativar {planoId, data?}. Erros: {"message"} com 400/404/409.
 AWS
 Conta 659791935620, região eu-west-1, stack gymsoftware.
 Role de deploy: arn:aws:iam::659791935620:role/GitHubActions-diniss12-gymsoftware (ARN, região e stack estão hardcoded no deploy.yml, sem secrets/variables no GitHub).

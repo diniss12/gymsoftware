@@ -95,6 +95,7 @@ def dados_socio(plano_id, **extra):
     return {
         "nome": "Álvaro Silva",
         "nif": NIF_A,
+        "sexo": "M",
         "dataNascimento": "1990-05-17",
         "dataEntrada": "2026-01-10",
         "morada": "Rua X, 1",
@@ -164,6 +165,8 @@ def test_data_entrada_por_omissao_e_hoje():
         ({"dataNascimento": "17/05/1990"}, "AAAA-MM-DD"),
         ({"planoId": "naoexiste"}, "Plano"),
         ({"planoId": None}, "planoId"),
+        ({"sexo": None}, "sexo"),
+        ({"sexo": "X"}, "sexo"),
     ],
 )
 def test_socio_invalido(extra, mensagem):
@@ -269,3 +272,25 @@ def test_json_invalido():
     assert s == 400 and "JSON" in e["message"]
     s, e = pedido("POST", "/planos", raw="[1, 2]")
     assert s == 400 and "objeto" in e["message"]
+
+
+def test_sexo_guardado_e_editavel():
+    plano = criar_plano()
+    _, socio = pedido("POST", "/socios", dados_socio(plano["id"], sexo="F"))
+    assert socio["sexo"] == "F"
+    s, editado = pedido("PUT", f"/socios/{socio['id']}", dados_socio(plano["id"], sexo="M"))
+    assert s == 200 and editado["sexo"] == "M"
+
+
+def test_periodos_de_todos_os_socios():
+    p3, p5 = criar_plano(3, 2500), criar_plano(5, 2900)
+    _, a = pedido("POST", "/socios", dados_socio(p3["id"]))
+    _, b = pedido("POST", "/socios", dados_socio(p5["id"], nif=NIF_B, nome="B", dataEntrada="2026-02-01"))
+    pedido("POST", f"/socios/{a['id']}/plano", {"planoId": p5["id"], "data": "2026-03-01"})
+
+    s, periodos = pedido("GET", "/periodos")
+    assert s == 200 and len(periodos) == 3
+    assert [p["dataInicio"] for p in periodos] == ["2026-01-10", "2026-02-01", "2026-03-01"]  # ordenados
+    assert {p["socioId"] for p in periodos} == {a["id"], b["id"]}
+    fechado = next(p for p in periodos if p["socioId"] == a["id"] and p["planoId"] == p3["id"])
+    assert fechado["dataFim"] == "2026-03-01" and "GSI1PK" not in fechado

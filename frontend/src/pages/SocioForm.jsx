@@ -2,12 +2,13 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api.js'
 import { useDados } from '../dados.jsx'
-import { euros, hojeISO, nifValido, vezes } from '../util.js'
+import { SEXOS, euros, hojeISO, nifValido, vezes } from '../util.js'
 import { Aguardar, Cabecalho, Erro } from './comum.jsx'
 
 const VAZIO = {
   nome: '',
   nif: '',
+  sexo: '',
   dataNascimento: '',
   dataEntrada: hojeISO(),
   morada: '',
@@ -50,8 +51,8 @@ function Formulario() {
     if (!nifValido(form.nif)) return setErro('NIF inválido.')
     setErro('')
     setAGravar(true)
-    const { nome, nif, dataNascimento, dataEntrada, morada, localidade, notas, planoId } = form
-    const body = { nome, nif, dataNascimento, dataEntrada, morada, localidade, notas }
+    const { nome, nif, sexo, dataNascimento, dataEntrada, morada, localidade, notas, planoId } = form
+    const body = { nome, nif, sexo, dataNascimento, dataEntrada, morada, localidade, notas }
     try {
       const socio = id
         ? await api(`/socios/${id}`, { method: 'PUT', body })
@@ -84,6 +85,15 @@ function Formulario() {
               aria-invalid={nifMal}
             />
             {nifMal && <span className="campo-erro">NIF inválido</span>}
+          </label>
+          <label>
+            Sexo
+            <select value={form.sexo} onChange={muda('sexo')} required>
+              <option value="" disabled>Escolhe…</option>
+              {Object.entries(SEXOS).map(([k, nome]) => (
+                <option key={k} value={k}>{nome}</option>
+              ))}
+            </select>
           </label>
           <label>
             Data de nascimento

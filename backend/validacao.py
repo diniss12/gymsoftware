@@ -98,6 +98,16 @@ def nao_futura(d: date, campo: str) -> date:
     return d
 
 
+SEXOS = ("M", "F")
+
+
+def sexo(body: dict) -> str:
+    valor = body.get("sexo")
+    if valor not in SEXOS:
+        raise ErroApi(400, "'sexo' é obrigatório: 'M' (masculino) ou 'F' (feminino)")
+    return valor
+
+
 # ---------------------------------------------------------------- NIF
 def nif_valido(nif: str) -> bool:
     """Digito de controlo do NIF portugues (modulo 11).

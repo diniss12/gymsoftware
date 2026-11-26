@@ -117,6 +117,7 @@ def _campos_socio(body: dict) -> dict:
     return {
         "nome": v.texto(body, "nome", max_len=120),
         "nif": v.nif(body),
+        "sexo": v.sexo(body),
         "dataNascimento": nascimento.isoformat(),
         "dataEntrada": entrada.isoformat(),
         "morada": v.texto(body, "morada", max_len=200, obrigatorio=False),
@@ -157,6 +158,13 @@ def listar_socios():
     if estado:
         socios = [s for s in socios if s["estado"] == estado.upper()]
     return socios
+
+
+@app.get("/periodos")
+def listar_periodos():
+    """Todos os periodos de plano de todos os socios (com socioId), para as
+    estatisticas de receita por mes. ~300 socios x poucos periodos: 1 Query."""
+    return repo.listar_periodos()
 
 
 @app.get("/socios/<socio_id>")

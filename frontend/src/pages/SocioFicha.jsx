@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api } from '../api.js'
 import { useDados } from '../dados.jsx'
-import { dataPt, euros, hojeISO, idade, vezes } from '../util.js'
+import { SEXOS, dataPt, euros, hojeISO, idade, vezes } from '../util.js'
 import { Aguardar, Cabecalho, Erro } from './comum.jsx'
 
 export default function SocioFicha() {
@@ -68,6 +68,7 @@ function Ficha() {
         <section className="cartao">
           <dl className="dados">
             <dt>NIF</dt><dd className="mono">{socio.nif}</dd>
+            <dt>Sexo</dt><dd>{SEXOS[socio.sexo] ?? '—'}</dd>
             <dt>Nascimento</dt><dd>{dataPt(socio.dataNascimento)} ({idade(socio.dataNascimento)} anos)</dd>
             <dt>Sócio desde</dt><dd>{dataPt(socio.dataEntrada)}</dd>
             <dt>Morada</dt><dd>{socio.morada || '—'}</dd>

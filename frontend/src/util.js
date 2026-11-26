@@ -52,4 +52,6 @@ export function nifValido(nif) {
   return Number(nif[8]) === (resto < 2 ? 0 : 11 - resto)
 }
 
+export const SEXOS = { M: 'Masculino', F: 'Feminino' }
+
 export const vezes = (p) => (p?.vezesPorSemana ? `${p.vezesPorSemana}× semana` : 'Livre')

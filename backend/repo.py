@@ -3,7 +3,7 @@
 Itens:
     PK            SK               GSI1PK   GSI1SK
     SOCIO#<id>    PERFIL           SOCIOS   <nome normalizado>#<id>   ficha do socio
-    SOCIO#<id>    PERIODO#<pid>    -        -                         historico de planos
+    SOCIO#<id>    PERIODO#<pid>    PERIODOS <dataInicio>#<pid>        historico de planos
     NIF#<nif>     NIF              -        -                         garante NIF unico
     PLANO#<id>    PLANO            PLANOS   <nome normalizado>#<id>   definicao do plano
 
@@ -128,7 +128,15 @@ def _item_socio(s: dict) -> dict:
 
 
 def _item_periodo(socio_id: str, p: dict) -> dict:
-    return {"PK": f"SOCIO#{socio_id}", "SK": f"PERIODO#{p['id']}", **p}
+    # No GSI1 sob PERIODOS: uma so Query devolve o historico de TODOS os socios
+    # (para a receita por mes), sem Scan a tabela.
+    return {
+        "PK": f"SOCIO#{socio_id}",
+        "SK": f"PERIODO#{p['id']}",
+        "GSI1PK": "PERIODOS",
+        "GSI1SK": f"{p['dataInicio']}#{p['id']}",
+        **p,
+    }
 
 
 def _item_nif(nif: str, socio_id: str) -> dict:
@@ -139,6 +147,11 @@ def listar_socios() -> list[dict]:
     # Com ~300 socios (~300 KB) isto e 1 pedido e ~40 unidades de leitura.
     itens = _query_tudo(IndexName="GSI1", KeyConditionExpression=Key("GSI1PK").eq("SOCIOS"))
     return [_limpo(i) for i in itens]
+
+
+def listar_periodos() -> list[dict]:
+    itens = _query_tudo(IndexName="GSI1", KeyConditionExpression=Key("GSI1PK").eq("PERIODOS"))
+    return [{**_limpo(i), "socioId": i["PK"].removeprefix("SOCIO#")} for i in itens]
 
 
 def obter_socio(socio_id: str) -> tuple[dict, list[dict]] | None:
