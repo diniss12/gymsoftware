@@ -119,12 +119,23 @@ Resources:
             Method: GET
             Auth:
               Authorizer: NONE          # publico: usado no smoke test do deploy
-        Proxy:
+        # Metodos explicitos em vez de ANY: um ANY tambem apanharia o OPTIONS
+        # (preflight CORS), que o browser envia SEM token -> o JWT authorizer
+        # respondia 401 e o browser bloqueava tudo ("Failed to fetch").
+        # Sem rota OPTIONS, o API Gateway responde ao preflight sozinho com a
+        # CorsConfiguration (e sem invocar a Lambda).
+        ProxyGet:
           Type: HttpApi
-          Properties:
-            ApiId: !Ref HttpApi
-            Path: /{proxy+}
-            Method: ANY
+          Properties: { ApiId: !Ref HttpApi, Path: "/{proxy+}", Method: GET }
+        ProxyPost:
+          Type: HttpApi
+          Properties: { ApiId: !Ref HttpApi, Path: "/{proxy+}", Method: POST }
+        ProxyPut:
+          Type: HttpApi
+          Properties: { ApiId: !Ref HttpApi, Path: "/{proxy+}", Method: PUT }
+        ProxyDelete:
+          Type: HttpApi
+          Properties: { ApiId: !Ref HttpApi, Path: "/{proxy+}", Method: DELETE }
 
   ApiFunctionLogGroup:
     Type: AWS::Logs::LogGroup
