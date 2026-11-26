@@ -25,22 +25,52 @@ CloudFront: OAC, PriceClass_100, CachingOptimized, 403/404 → /index.html (SPA 
 Estrutura do repo
 .github/workflows/deploy.yml   # pipeline completa (name: Deploy)
 template.yaml                  # SAM — TEM de estar na raiz
-backend/app.py
-backend/requirements.txt       # aws-lambda-powertools>=3,<4
+backend/app.py                 # rotas + regras de negócio
+backend/repo.py                # acesso ao DynamoDB (itens, transações)
+backend/validacao.py           # validação de campos, NIF, ULID, datas (Europe/Lisbon)
+backend/requirements.txt       # aws-lambda-powertools>=3,<4, tzdata
+tests/test_api.py              # pytest + moto (DynamoDB simulado); correm SÓ no GitHub Actions (passo "Testes", antes do deploy)
+scripts/planos.json            # planos mensais com ids fixos; carregar UMA vez: aws dynamodb batch-write-item --region eu-west-1 --request-items file://scripts/planos.json (voltar a correr repõe os preços originais)
+requirements-dev.txt           # deps dos testes, instaladas só no CI
+NÃO instalar nada nem correr testes no PC do Dinis (sem venv, pip, uv). Testes e builds correm no GitHub Actions. Localmente só git e AWS CLI.
 frontend/                      # ainda não existe; passos do frontend no workflow são saltados até haver frontend/package.json
+
+Domínio e modelo de dados
+"Sócios" = clientes do ginásio (não confundir com o utilizador Cognito, que é só o dono).
+Sócio: id (ULID interno), nome, nif (obrigatório, único, dígito de controlo validado), dataNascimento, dataEntrada (hoje ou anterior, nunca futura), morada, localidade, notas, plano obrigatório, estado ATIVO/INATIVO (sair = inativar, nunca apagar).
+Planos: mensais, sem fidelização, 1× a 6× por semana = 21/23/25/27/29/30 €. Preços em cêntimos (int).
+Histórico de planos importa: cada mudança fecha o período atual (dataFim exclusiva = início do seguinte) e abre outro. Períodos guardam cópia de nome/preço do plano (mudar o preço não reescreve o histórico).
+Máx. ~300 sócios → GET /socios devolve todos (~300 KB, 1 Query); pesquisa por nome/NIF e estatísticas (por plano, localidade, idade, aniversariantes, inativos) calculadas no frontend, sem GSIs extra. Idade nunca é guardada. Rever se passar de alguns milhares.
+Itens (single-table):
+  SOCIO#<id> / PERFIL            GSI1: SOCIOS / <nome normalizado>#<id>   (planoId, planoDesde, periodoAtual copiados para a ficha)
+  SOCIO#<id> / PERIODO#<ulid>    histórico (ULID ordena por criação; datas em atributos para se poderem corrigir)
+  NIF#<nif>  / NIF               garante unicidade via transação com attribute_not_exists
+  PLANO#<id> / PLANO             GSI1: PLANOS / <nome normalizado>#<id>
+Escritas de sócio são transações; ficha usa lock otimista (condição atualizadoEm = valor lido).
+API: GET/POST /planos, PUT /planos/{id}; GET /socios[?estado=], GET/PUT /socios/{id}, POST /socios (planoId obrigatório), POST /socios/{id}/plano {planoId, data?}, /inativar {data?}, /reativar {planoId, data?}. Erros: {"message"} com 400/404/409.
 AWS
 Conta 659791935620, região eu-west-1, stack gymsoftware.
 Role de deploy: arn:aws:iam::659791935620:role/GitHubActions-diniss12-gymsoftware (ARN, região e stack estão hardcoded no deploy.yml, sem secrets/variables no GitHub).
 Trust policy: o repo usa immutable subject claims do GitHub, por isso o sub é repo:diniss12@156342499/gymsoftware@1451948703:ref:refs/heads/main (StringEquals, só branch main). O formato antigo repo:diniss12/gymsoftware:* NÃO funciona.
 Permissions policy inline gymsoftware-deploy: scoped por prefixo gymsoftware-* (Lambda, DynamoDB, IAM roles + PassRole só para lambda.amazonaws.com, logs, S3) + stacks gymsoftware e aws-sam-cli-managed-default, transform Serverless, apigateway:* em eu-west-1, cognito-idp:* (eu-west-1), cloudfront:*. Se um deploy falhar com AccessDenied, acrescentar só a ação em falta.
 sam deploy usa --resolve-s3 --capabilities CAPABILITY_IAM --no-confirm-changeset --no-fail-on-empty-changeset.
-Estado atual (2026-11-10)
-✅ OIDC GitHub → AWS a funcionar (testado com sts get-caller-identity).
-✅ template.yaml e deploy.yml validados com cfn-lint / actionlint.
-❌ Stack gymsoftware ainda não existe na AWS: o workflow que corre no repo ainda é o de teste ("Deploy to AWS", com passos Debug OIDC claims / Test AWS Connection). É preciso substituí-lo pelo deploy.yml completo (name: Deploy) e remover o step de debug OIDC.
-❓ Confirmar que a permissions policy está aplicada: aws iam list-role-policies --role-name GitHubActions-diniss12-gymsoftware deve mostrar gymsoftware-deploy.
+Outputs da stack (não são segredos; o workflow lê-os sozinho)
+ApiUrl: https://2mluqhv8f0.execute-api.eu-west-1.amazonaws.com
+FrontendUrl: https://d3c8egkeabgy51.cloudfront.net
+UserPoolId: eu-west-1_29CN68hcU — UserPoolClientId: lt2hfdp1tj6og7976kvi79sup
+TableName: gymsoftware-Table-1EZNU9XMSH04V — FrontendBucketName: gymsoftware-frontendbucket-c4mvihqk1umt — DistributionId: E3N3HW601HPY3F
+Estado atual (2026-11-26)
+✅ OIDC GitHub → AWS a funcionar.
+✅ Workflow completo (name: Deploy) no repo; run do commit 6b1686a passou todos os passos (frontend saltado).
+✅ Stack gymsoftware CREATE_COMPLETE (criada 2026-11-10). Policy gymsoftware-deploy aplicada na role.
+✅ GET /health → 200; GET /me sem token → 401 (JWT authorizer a bloquear antes da Lambda).
+✅ Utilizador do dono criado no Cognito (2026-11-26) via admin-create-user, email_verified=true, password temporária enviada por email pelo Cognito; estado FORCE_CHANGE_PASSWORD até ao primeiro login. Com UsernameAttributes: [email] o Username interno é o sub (UUID); o login faz-se com o email.
+⚠️ A CLI local tem estado a usar a conta root — migrar para um utilizador do IAM Identity Center (AdministratorAccess) e garantir MFA na root.
+Decidido: manter o Cognito apesar de haver só 1 utilizador (custo 0 no LITE; evita implementar hashing, bloqueio de força bruta, sessões e recuperação à mão).
+✅ Backend de sócios e planos escrito (24 testes; passo de testes no pipeline antes do sam build) — ainda não deployed; planos ainda não carregados na tabela.
+Pendente de limpeza: actions do workflow (checkout@v4, setup-python@v5, configure-aws-credentials@v4, setup-sam@v2) usam Node 20 descontinuado.
 Próximos passos
-Substituir o workflow de teste pelo deploy.yml completo e fazer push para main; primeiro deploy ~5–10 min (CloudFront). Smoke test /health deve passar.
-Criar o utilizador do dono do ginásio no Cognito e testar GET /me com o access token.
-Modelar os dados em single-table a partir das entidades (sócios, planos, pagamentos, check-ins) — definir padrões de acesso primeiro.
+Primeiro login do dono (definir password definitiva) e testar GET /me com access token. O app client só permite SRP, por isso o token obtém-se pelo frontend ou por um script SRP (ex.: pycognito), não com aws cognito-idp initiate-auth USER_PASSWORD_AUTH.
+Deploy do backend (push para main) + carregar scripts/planos.json.
+Modelar pagamentos/quotas em atraso e entradas (check-ins) — padrões de acesso primeiro; vezesPorSemana do plano limita entradas.
 Criar o frontend em frontend/ (React + Vite + Amplify).

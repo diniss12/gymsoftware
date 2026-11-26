@@ -26,6 +26,15 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"     # tem de bater com o Runtime do template
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      # Se algum teste falhar o job para aqui: nada e deployed e a versao
+      # anterior continua em producao. Usa DynamoDB simulado (moto), sem AWS.
+      - name: Testes
+        run: |
+          pip install -r requirements-dev.txt
+          python -m pytest -q tests
  
       - uses: aws-actions/setup-sam@v2
         with:

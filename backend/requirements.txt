@@ -1,1 +1,2 @@
 aws-lambda-powertools>=3,<4
+tzdata  # base de dados de fusos horarios para zoneinfo (Europe/Lisbon)

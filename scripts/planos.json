@@ -1,0 +1,238 @@
+{
+ "gymsoftware-Table-1EZNU9XMSH04V": [
+  {
+   "PutRequest": {
+    "Item": {
+     "PK": {
+      "S": "PLANO#01M8CJ94E2S9C6RRJC55KQ5NA2"
+     },
+     "SK": {
+      "S": "PLANO"
+     },
+     "GSI1PK": {
+      "S": "PLANOS"
+     },
+     "GSI1SK": {
+      "S": "mensal 1× semana#01M8CJ94E2S9C6RRJC55KQ5NA2"
+     },
+     "tipo": {
+      "S": "PLANO"
+     },
+     "id": {
+      "S": "01M8CJ94E2S9C6RRJC55KQ5NA2"
+     },
+     "nome": {
+      "S": "Mensal 1× semana"
+     },
+     "periodicidade": {
+      "S": "MENSAL"
+     },
+     "vezesPorSemana": {
+      "N": "1"
+     },
+     "precoMensal": {
+      "N": "2100"
+     },
+     "ativo": {
+      "BOOL": true
+     }
+    }
+   }
+  },
+  {
+   "PutRequest": {
+    "Item": {
+     "PK": {
+      "S": "PLANO#01M8CJ94E5YXSMNS75GYQBGXJG"
+     },
+     "SK": {
+      "S": "PLANO"
+     },
+     "GSI1PK": {
+      "S": "PLANOS"
+     },
+     "GSI1SK": {
+      "S": "mensal 2× semana#01M8CJ94E5YXSMNS75GYQBGXJG"
+     },
+     "tipo": {
+      "S": "PLANO"
+     },
+     "id": {
+      "S": "01M8CJ94E5YXSMNS75GYQBGXJG"
+     },
+     "nome": {
+      "S": "Mensal 2× semana"
+     },
+     "periodicidade": {
+      "S": "MENSAL"
+     },
+     "vezesPorSemana": {
+      "N": "2"
+     },
+     "precoMensal": {
+      "N": "2300"
+     },
+     "ativo": {
+      "BOOL": true
+     }
+    }
+   }
+  },
+  {
+   "PutRequest": {
+    "Item": {
+     "PK": {
+      "S": "PLANO#01M8CJ94E8MSAP2VXZGQP293SZ"
+     },
+     "SK": {
+      "S": "PLANO"
+     },
+     "GSI1PK": {
+      "S": "PLANOS"
+     },
+     "GSI1SK": {
+      "S": "mensal 3× semana#01M8CJ94E8MSAP2VXZGQP293SZ"
+     },
+     "tipo": {
+      "S": "PLANO"
+     },
+     "id": {
+      "S": "01M8CJ94E8MSAP2VXZGQP293SZ"
+     },
+     "nome": {
+      "S": "Mensal 3× semana"
+     },
+     "periodicidade": {
+      "S": "MENSAL"
+     },
+     "vezesPorSemana": {
+      "N": "3"
+     },
+     "precoMensal": {
+      "N": "2500"
+     },
+     "ativo": {
+      "BOOL": true
+     }
+    }
+   }
+  },
+  {
+   "PutRequest": {
+    "Item": {
+     "PK": {
+      "S": "PLANO#01M8CJ94ECET3RF3XX3XSZ5GFE"
+     },
+     "SK": {
+      "S": "PLANO"
+     },
+     "GSI1PK": {
+      "S": "PLANOS"
+     },
+     "GSI1SK": {
+      "S": "mensal 4× semana#01M8CJ94ECET3RF3XX3XSZ5GFE"
+     },
+     "tipo": {
+      "S": "PLANO"
+     },
+     "id": {
+      "S": "01M8CJ94ECET3RF3XX3XSZ5GFE"
+     },
+     "nome": {
+      "S": "Mensal 4× semana"
+     },
+     "periodicidade": {
+      "S": "MENSAL"
+     },
+     "vezesPorSemana": {
+      "N": "4"
+     },
+     "precoMensal": {
+      "N": "2700"
+     },
+     "ativo": {
+      "BOOL": true
+     }
+    }
+   }
+  },
+  {
+   "PutRequest": {
+    "Item": {
+     "PK": {
+      "S": "PLANO#01M8CJ94EFR6QBDBPWAKHFD92C"
+     },
+     "SK": {
+      "S": "PLANO"
+     },
+     "GSI1PK": {
+      "S": "PLANOS"
+     },
+     "GSI1SK": {
+      "S": "mensal 5× semana#01M8CJ94EFR6QBDBPWAKHFD92C"
+     },
+     "tipo": {
+      "S": "PLANO"
+     },
+     "id": {
+      "S": "01M8CJ94EFR6QBDBPWAKHFD92C"
+     },
+     "nome": {
+      "S": "Mensal 5× semana"
+     },
+     "periodicidade": {
+      "S": "MENSAL"
+     },
+     "vezesPorSemana": {
+      "N": "5"
+     },
+     "precoMensal": {
+      "N": "2900"
+     },
+     "ativo": {
+      "BOOL": true
+     }
+    }
+   }
+  },
+  {
+   "PutRequest": {
+    "Item": {
+     "PK": {
+      "S": "PLANO#01M8CJ94EKWNT15F3KV8APEZTA"
+     },
+     "SK": {
+      "S": "PLANO"
+     },
+     "GSI1PK": {
+      "S": "PLANOS"
+     },
+     "GSI1SK": {
+      "S": "mensal 6× semana#01M8CJ94EKWNT15F3KV8APEZTA"
+     },
+     "tipo": {
+      "S": "PLANO"
+     },
+     "id": {
+      "S": "01M8CJ94EKWNT15F3KV8APEZTA"
+     },
+     "nome": {
+      "S": "Mensal 6× semana"
+     },
+     "periodicidade": {
+      "S": "MENSAL"
+     },
+     "vezesPorSemana": {
+      "N": "6"
+     },
+     "precoMensal": {
+      "N": "3000"
+     },
+     "ativo": {
+      "BOOL": true
+     }
+    }
+   }
+  }
+ ]
+}

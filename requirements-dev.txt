@@ -1,0 +1,5 @@
+# Dependencias para correr os testes no GitHub Actions (nao instalar localmente)
+-r backend/requirements.txt
+boto3      # ja vem no runtime da Lambda; so preciso para os testes
+moto[dynamodb]
+pytest
