@@ -20,7 +20,7 @@ Uma Lambda só ("lambdalith") com router do Powertools for AWS Lambda (APIGatewa
 arm64 (Graviton), 256 MB, timeout 10 s. Log group com retenção 14 dias.
 HTTP API (não REST API): mais barata. JWT authorizer valida tokens do Cognito antes da Lambda correr. GET /health é pública (smoke test); ANY /{proxy+} exige JWT.
 Cognito tier LITE, AllowAdminCreateUserOnly: true: sem registo público. Só existe UM utilizador gestor (o dono do ginásio) — por agora não usar grupos/roles. Contas criadas via consola/admin-create-user com email_verified=true; primeiro login força nova password (challenge NEW_PASSWORD_REQUIRED). App client sem secret, fluxo SRP.
-Frontend: React + Vite, Amplify <Authenticator hideSignUp>; chamadas à API com Authorization: Bearer <accessToken> via fetchAuthSession(). Variáveis VITE_API_URL, VITE_USER_POOL_ID, VITE_USER_POOL_CLIENT_ID injetadas pelo workflow a partir dos Outputs da stack.
+Frontend: React 19 + Vite 8 + react-router-dom 7 (v8 existe mas não foi usado), JS (sem TypeScript). Login feito à mão com aws-amplify/auth (signIn SRP, confirmSignIn para NEW_PASSWORD_REQUIRED, resetPassword) em vez do <Authenticator> — controlo total do design e bundle menor. Sem package-lock.json (npm não corre localmente): versões exatas no package.json e o workflow usa npm install (npm ci se um dia houver lock). Estética do site ativofitness.pages.dev: preto #0c0c0d, vermelho #c8102e/#e3263f, Anton (títulos) + Montserrat; login em fundo bege #f0dbc0 com o logo do site (PNG branco) pintado a preto via CSS filter. Logo importado em src/assets (Vite põe hash no nome → compatível com cache immutable). Sócios e planos carregados uma vez (DadosProvider); pesquisa e estatísticas calculadas no browser. Chamadas à API com Authorization: Bearer <accessToken> via fetchAuthSession(). Variáveis VITE_API_URL, VITE_USER_POOL_ID, VITE_USER_POOL_CLIENT_ID injetadas pelo workflow a partir dos Outputs da stack.
 CloudFront: OAC, PriceClass_100, CachingOptimized, 403/404 → /index.html (SPA routing). Assets com cache 1 ano immutable; index.html com no-cache; invalidação /* em cada deploy.
 Estrutura do repo
 .github/workflows/deploy.yml   # pipeline completa (name: Deploy)
@@ -33,7 +33,10 @@ tests/test_api.py              # pytest + moto (DynamoDB simulado); correm SÓ n
 scripts/planos.json            # planos mensais com ids fixos; carregar UMA vez: aws dynamodb batch-write-item --region eu-west-1 --request-items file://scripts/planos.json (voltar a correr repõe os preços originais)
 requirements-dev.txt           # deps dos testes, instaladas só no CI
 NÃO instalar nada nem correr testes no PC do Dinis (sem venv, pip, uv). Testes e builds correm no GitHub Actions. Localmente só git e AWS CLI.
-frontend/                      # ainda não existe; passos do frontend no workflow são saltados até haver frontend/package.json
+frontend/src/App.jsx           # sessão, router, navegação
+frontend/src/Login.jsx         # login / 1.º acesso / recuperar password
+frontend/src/dados.jsx         # contexto com sócios + planos
+frontend/src/pages/            # Socios, SocioForm, SocioFicha, Estatisticas, Planos
 
 Domínio e modelo de dados
 "Sócios" = clientes do ginásio (não confundir com o utilizador Cognito, que é só o dono).
@@ -67,10 +70,11 @@ Estado atual (2026-11-26)
 ✅ Utilizador do dono criado no Cognito (2026-11-26) via admin-create-user, email_verified=true, password temporária enviada por email pelo Cognito; estado FORCE_CHANGE_PASSWORD até ao primeiro login. Com UsernameAttributes: [email] o Username interno é o sub (UUID); o login faz-se com o email.
 ⚠️ A CLI local tem estado a usar a conta root — migrar para um utilizador do IAM Identity Center (AdministratorAccess) e garantir MFA na root.
 Decidido: manter o Cognito apesar de haver só 1 utilizador (custo 0 no LITE; evita implementar hashing, bloqueio de força bruta, sessões e recuperação à mão).
-✅ Backend de sócios e planos escrito (24 testes; passo de testes no pipeline antes do sam build) — ainda não deployed; planos ainda não carregados na tabela.
+✅ Backend de sócios e planos deployed (commit b5396c4, 2026-11-26); 24 testes passam no passo "Testes" do pipeline. GET /socios e /planos testados por invocação direta da Lambda → 200 [].
+✅ 6 planos mensais carregados na tabela a partir de scripts/planos.json (2026-11-26) — NÃO voltar a correr o batch-write (repõe preços originais); alterações a planos passam a ser via API.
+Push a partir deste PC é feito com a conta GitHub dinisacn1 (colaboradora do repo diniss12/gymsoftware).
 Pendente de limpeza: actions do workflow (checkout@v4, setup-python@v5, configure-aws-credentials@v4, setup-sam@v2) usam Node 20 descontinuado.
 Próximos passos
 Primeiro login do dono (definir password definitiva) e testar GET /me com access token. O app client só permite SRP, por isso o token obtém-se pelo frontend ou por um script SRP (ex.: pycognito), não com aws cognito-idp initiate-auth USER_PASSWORD_AUTH.
-Deploy do backend (push para main) + carregar scripts/planos.json.
 Modelar pagamentos/quotas em atraso e entradas (check-ins) — padrões de acesso primeiro; vezesPorSemana do plano limita entradas.
 Criar o frontend em frontend/ (React + Vite + Amplify).

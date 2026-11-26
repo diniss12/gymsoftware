@@ -85,7 +85,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: frontend/package-lock.json
+          cache-dependency-path: frontend/package.json
  
       - name: Build frontend
         if: hashFiles('frontend/package.json') != ''
@@ -94,8 +94,10 @@ jobs:
           VITE_API_URL: ${{ steps.stack.outputs.api_url }}
           VITE_USER_POOL_ID: ${{ steps.stack.outputs.user_pool_id }}
           VITE_USER_POOL_CLIENT_ID: ${{ steps.stack.outputs.user_pool_client_id }}
+        # Sem package-lock.json (o npm nao corre localmente): versoes exatas no
+        # package.json; se um dia houver lock, usa npm ci (instalacao reprodutivel).
         run: |
-          npm ci
+          if [ -f package-lock.json ]; then npm ci; else npm install --no-audit --no-fund; fi
           npm run build
  
       - name: Upload to S3
