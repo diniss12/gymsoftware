@@ -36,14 +36,16 @@ NÃO instalar nada nem correr testes no PC do Dinis (sem venv, pip, uv). Testes 
 frontend/src/App.jsx           # sessão, router, navegação
 frontend/src/Login.jsx         # login / 1.º acesso / recuperar password
 frontend/src/dados.jsx         # contexto com sócios + planos
-frontend/src/pages/            # Socios, SocioForm, SocioFicha, Estatisticas, Planos
+frontend/src/api.js            # fetch com Bearer accessToken; erros → Error(message)
+frontend/src/util.js           # funções puras: euros/cêntimos, datas, idade, NIF, meses, regras de pagamento (mesesDevidos, situacao)
+frontend/src/pages/            # Inicio (painel de atrasos), Socios, SocioForm, SocioFicha, Pagamentos (componentes usados na ficha), Estatisticas, Planos, comum (Aguardar/Cabecalho/Erro)
 
 Domínio e modelo de dados
 "Sócios" = clientes do ginásio (não confundir com o utilizador Cognito, que é só o dono).
 Sócio: id (ULID interno), nome, nif (obrigatório, único, dígito de controlo validado), sexo ('M'/'F', obrigatório), dataNascimento, dataEntrada (hoje ou anterior, nunca futura), morada, localidade, notas, plano obrigatório, estado ATIVO/INATIVO (sair = inativar, nunca apagar).
 Planos: mensais, sem fidelização, 1× a 6× por semana = 21/23/25/27/29/30 €. Preços em cêntimos (int).
 Histórico de planos importa: cada mudança fecha o período atual (dataFim exclusiva = início do seguinte) e abre outro. Períodos guardam cópia de nome/preço do plano (mudar o preço não reescreve o histórico).
-Receita por mês (estatísticas): conta o último plano em vigor de cada sócio em cada mês; é receita PREVISTA pelos planos (pagamentos ainda não existem).
+Receita por mês (estatísticas): conta o último plano em vigor de cada sócio em cada mês; é receita PREVISTA pelos planos (não pelos pagamentos recebidos). Também há receita por sexo.
 Máx. ~300 sócios → GET /socios devolve todos (~300 KB, 1 Query); pesquisa por nome/NIF e estatísticas (por plano, localidade, idade, aniversariantes, inativos) calculadas no frontend, sem GSIs extra. Idade nunca é guardada. Rever se passar de alguns milhares.
 Itens (single-table):
   SOCIO#<id> / PERFIL            GSI1: SOCIOS / <nome normalizado>#<id>   (planoId, planoDesde, periodoAtual copiados para a ficha)
@@ -53,6 +55,7 @@ Itens (single-table):
   PLANO#<id> / PLANO             GSI1: PLANOS / <nome normalizado>#<id>
 Pagamentos (regras no frontend, util.js): mensalidade do mês M vence no dia 8 de M+1 (DIA_LIMITE); depois fica "em atraso" no painel Início (/). Um sócio deve cada mês em que teve plano em vigor (≥1 dia), pelo preço do último plano desse mês. Cobrança só a partir de INICIO_COBRANCA = 2026-11 (meses anteriores nunca são dívida). Pode pagar-se adiantado até ao mês seguinte. Estatística "pagamentos por método" = valor recebido nos últimos 12 meses por dataPagamento.
 Escritas de sócio são transações; ficha usa lock otimista (condição atualizadoEm = valor lido).
+Caso-limite conhecido: POST /socios/{id}/plano com data = dataInicio do período atual cria um período de 0 dias (não parte nada, mas suja o histórico).
 API: GET/POST /planos, PUT /planos/{id}; GET /periodos (todos, com socioId); GET /pagamentos[?desde=AAAA-MM]; POST /socios/{id}/pagamentos {mes, valor, metodo, dataPagamento?, notas?}; DELETE /socios/{id}/pagamentos/{mes}; GET /socios/{id} inclui historico + pagamentos; GET /socios[?estado=], GET/PUT /socios/{id}, POST /socios (planoId obrigatório), POST /socios/{id}/plano {planoId, data?}, /inativar {data?}, /reativar {planoId, data?}. Erros: {"message"} com 400/404/409.
 AWS
 Conta 659791935620, região eu-west-1, stack gymsoftware.
@@ -65,7 +68,7 @@ ApiUrl: https://2mluqhv8f0.execute-api.eu-west-1.amazonaws.com
 FrontendUrl: https://d3c8egkeabgy51.cloudfront.net
 UserPoolId: eu-west-1_29CN68hcU — UserPoolClientId: lt2hfdp1tj6og7976kvi79sup
 TableName: gymsoftware-Table-1EZNU9XMSH04V — FrontendBucketName: gymsoftware-frontendbucket-c4mvihqk1umt — DistributionId: E3N3HW601HPY3F
-Estado atual (2026-11-26)
+Estado atual (2026-11-27)
 ✅ OIDC GitHub → AWS a funcionar.
 ✅ Workflow completo (name: Deploy) no repo; run do commit 6b1686a passou todos os passos (frontend saltado).
 ✅ Stack gymsoftware CREATE_COMPLETE (criada 2026-11-10). Policy gymsoftware-deploy aplicada na role.
@@ -76,9 +79,13 @@ Decidido: manter o Cognito apesar de haver só 1 utilizador (custo 0 no LITE; ev
 ✅ Backend de sócios e planos deployed (commit b5396c4, 2026-11-26); 24 testes passam no passo "Testes" do pipeline. GET /socios e /planos testados por invocação direta da Lambda → 200 [].
 ✅ 6 planos mensais carregados na tabela a partir de scripts/planos.json (2026-11-26) — NÃO voltar a correr o batch-write (repõe preços originais); alterações a planos passam a ser via API.
 ✅ Frontend deployed (commit 66c121a, 2026-11-26): build no CI passou, CloudFront serve index (no-cache) + bundle (immutable) com VITE_* injetadas; rotas SPA dão 200. Ainda por validar no browser: primeiro login do dono e fluxo completo.
+✅ CORS corrigido (commit 303ff7d): rotas GET/POST/PUT/DELETE explícitas em vez de ANY /{proxy+}.
+✅ Sexo do sócio + receita por mês e por sexo nas estatísticas (commit a46397b).
+✅ Pagamentos (commit 4bde3e6, 2026-11-26): backend (POST/DELETE por sócio e mês, GET /pagamentos) + frontend (registo e histórico na ficha, atrasos no Início, estatística por método).
 Push a partir deste PC é feito com a conta GitHub dinisacn1 (colaboradora do repo diniss12/gymsoftware).
 Pendente de limpeza: actions do workflow (checkout@v4, setup-python@v5, configure-aws-credentials@v4, setup-sam@v2) usam Node 20 descontinuado.
 Próximos passos
 Primeiro login do dono (definir password definitiva) e testar GET /me com access token. O app client só permite SRP, por isso o token obtém-se pelo frontend ou por um script SRP (ex.: pycognito), não com aws cognito-idp initiate-auth USER_PASSWORD_AUTH.
-Modelar pagamentos/quotas em atraso e entradas (check-ins) — padrões de acesso primeiro; vezesPorSemana do plano limita entradas.
-Criar o frontend em frontend/ (React + Vite + Amplify).
+Modelar entradas (check-ins) — padrões de acesso primeiro; vezesPorSemana do plano limita entradas.
+Atualizar as actions do workflow para versões com Node 24.
+Migrar a CLI local da conta root para IAM Identity Center.
