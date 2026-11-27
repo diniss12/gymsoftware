@@ -67,7 +67,7 @@ function Formulario() {
 
   return (
     <>
-      <Cabecalho eyebrow={id ? 'Editar sócio' : 'Inscrição'} titulo={id ? form.nome : 'Novo sócio'} />
+      <Cabecalho titulo={id ? 'Editar sócio' : 'Novo sócio'} descricao={id ? form.nome : null} />
       <form className="formulario" onSubmit={gravar}>
         <fieldset>
           <legend>Dados pessoais</legend>
@@ -135,8 +135,8 @@ function Formulario() {
 
         <Erro>{erro}</Erro>
         <div className="formulario-acoes">
-          <button className="btn btn-red" disabled={aGravar}>{aGravar ? 'A gravar…' : id ? 'Guardar alterações' : 'Inscrever sócio'}</button>
-          <Link to={id ? `/socios/${id}` : '/socios'} className="btn btn-ghost">Cancelar</Link>
+          <button className="btn btn-primario" disabled={aGravar}>{aGravar ? 'A gravar…' : id ? 'Guardar alterações' : 'Inscrever sócio'}</button>
+          <Link to={id ? `/socios/${id}` : '/socios'} className="btn">Cancelar</Link>
         </div>
       </form>
     </>

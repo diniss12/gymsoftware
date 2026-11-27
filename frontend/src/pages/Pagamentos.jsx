@@ -59,7 +59,7 @@ export function RegistarPagamento({ socio, onFeito, onCancelar }) {
 
   return (
     <form className="painel-acao" onSubmit={gravar}>
-      <p className="eyebrow">Registar pagamento</p>
+      <h2 className="painel-titulo">Registar pagamento</h2>
       <div className="painel-campos">
         <label>
           Mês da mensalidade
@@ -90,12 +90,14 @@ export function RegistarPagamento({ socio, onFeito, onCancelar }) {
       </div>
       <fieldset className="metodos">
         <legend>Método</legend>
-        {Object.entries(METODOS).map(([k, nome]) => (
-          <label key={k} className={`metodo${metodo === k ? ' metodo-ativo' : ''}`}>
-            <input type="radio" name="metodo" value={k} checked={metodo === k} onChange={() => setMetodo(k)} />
-            {nome}
-          </label>
-        ))}
+        <div className="metodos-opcoes">
+          {Object.entries(METODOS).map(([k, nome]) => (
+            <label key={k} className={`metodo${metodo === k ? ' metodo-ativo' : ''}`}>
+              <input type="radio" name="metodo" value={k} checked={metodo === k} onChange={() => setMetodo(k)} />
+              {nome}
+            </label>
+          ))}
+        </div>
       </fieldset>
       <label className="painel-notas">
         Notas
@@ -103,8 +105,8 @@ export function RegistarPagamento({ socio, onFeito, onCancelar }) {
       </label>
       <Erro>{erro}</Erro>
       <div className="formulario-acoes">
-        <button className="btn btn-red" disabled={aGravar}>{aGravar ? 'A gravar…' : 'Registar pagamento'}</button>
-        <button type="button" className="btn btn-ghost" onClick={onCancelar}>Cancelar</button>
+        <button className="btn btn-primario" disabled={aGravar}>{aGravar ? 'A gravar…' : 'Registar pagamento'}</button>
+        <button type="button" className="btn" onClick={onCancelar}>Cancelar</button>
       </div>
     </form>
   )

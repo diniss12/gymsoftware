@@ -24,34 +24,51 @@ function Lista() {
 
   return (
     <>
-      <Cabecalho eyebrow="Mensais · sem fidelização" titulo="Planos">
-        {aEditar !== 'novo' && (
-          <button className="btn btn-red" onClick={() => setAEditar('novo')}>+ Novo plano</button>
+      <Cabecalho titulo="Planos" descricao="Planos mensais, sem fidelização.">
+        {!aEditar && (
+          <button className="btn btn-primario" onClick={() => setAEditar('novo')}>Novo plano</button>
         )}
       </Cabecalho>
 
-      <p className="muted aviso-plano">
+      {aEditar && (
+        <FormPlano
+          key={aEditar}
+          plano={planos.find((p) => p.id === aEditar)}
+          onFechar={() => setAEditar(null)}
+        />
+      )}
+
+      <div className="tabela-scroll">
+        <table className="tabela">
+          <thead>
+            <tr>
+              <th>Plano</th>
+              <th>Frequência</th>
+              <th className="num">Preço mensal</th>
+              <th className="num">Sócios ativos</th>
+              <th>Estado</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {planos.map((p) => (
+              <tr key={p.id} className={p.ativo ? undefined : 'linha-inativa'}>
+                <td>{p.nome}</td>
+                <td>{vezes(p)}</td>
+                <td className="num">{euros(p.precoMensal)}</td>
+                <td className="num">{sociosPorPlano[p.id] ?? 0}</td>
+                <td><span className="etiqueta">{p.ativo ? 'Disponível' : 'Desativado'}</span></td>
+                <td className="num">
+                  <button className="btn btn-pequeno" onClick={() => setAEditar(p.id)} disabled={!!aEditar}>Editar</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="texto-ajuda rodape">
         Mudar o preço de um plano não altera o histórico: cada sócio guarda o preço que estava em vigor quando entrou nesse plano.
       </p>
-
-      {aEditar === 'novo' && <FormPlano onFechar={() => setAEditar(null)} />}
-
-      <div className="planos-grelha">
-        {planos.map((p) =>
-          aEditar === p.id ? (
-            <FormPlano key={p.id} plano={p} onFechar={() => setAEditar(null)} />
-          ) : (
-            <article key={p.id} className={`plano-cartao${p.ativo ? '' : ' plano-inativo'}`}>
-              <p className="cartao-lbl">{p.nome}{!p.ativo && ' · desativado'}</p>
-              <p className="plano-preco">
-                {euros(p.precoMensal).replace(/\s?€/, '')}<sup>€</sup><small>/mês</small>
-              </p>
-              <p className="muted">{vezes(p)} · {sociosPorPlano[p.id] ?? 0} sócio(s) ativo(s)</p>
-              <button className="btn btn-ghost btn-pequeno" onClick={() => setAEditar(p.id)}>Editar</button>
-            </article>
-          ),
-        )}
-      </div>
     </>
   )
 }
@@ -85,8 +102,8 @@ function FormPlano({ plano, onFechar }) {
   }
 
   return (
-    <form className="painel-acao plano-form" onSubmit={gravar}>
-      <p className="eyebrow">{plano ? 'Editar plano' : 'Novo plano'}</p>
+    <form className="painel-acao" onSubmit={gravar}>
+      <h2 className="painel-titulo">{plano ? 'Editar plano' : 'Novo plano'}</h2>
       <div className="painel-campos">
         <label>
           Nome
@@ -112,8 +129,8 @@ function FormPlano({ plano, onFechar }) {
       </div>
       <Erro>{erro}</Erro>
       <div className="formulario-acoes">
-        <button className="btn btn-red" disabled={aGravar}>{aGravar ? 'A gravar…' : 'Guardar'}</button>
-        <button type="button" className="btn btn-ghost" onClick={onFechar}>Cancelar</button>
+        <button className="btn btn-primario" disabled={aGravar}>{aGravar ? 'A gravar…' : 'Guardar'}</button>
+        <button type="button" className="btn" onClick={onFechar}>Cancelar</button>
       </div>
     </form>
   )

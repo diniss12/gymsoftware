@@ -163,7 +163,7 @@ function Painel() {
 
   return (
     <>
-      <Cabecalho eyebrow="Sócios ativos" titulo="Estatísticas" />
+      <Cabecalho titulo="Estatísticas" descricao="Calculadas a partir dos sócios ativos, salvo indicação em contrário." />
 
       <div className="tiles">
         <Tile rotulo="Sócios ativos" valor={e.ativos} />
@@ -180,7 +180,7 @@ function Painel() {
           <section className="cartao col-total">
             <h2 className="cartao-titulo">Receita por mês</h2>
             <p className="cartao-sub">
-              Prevista pelos planos em vigor em cada mês (ainda não há pagamentos registados). Quem mudou de plano a meio do mês conta com o último plano.
+              Prevista pelos planos em vigor em cada mês, não pelos pagamentos recebidos. Quem mudou de plano a meio do mês conta com o último plano.
             </p>
             <Erro>{erroPeriodos}</Erro>
             {!meses && !erroPeriodos && <p className="muted">A carregar…</p>}

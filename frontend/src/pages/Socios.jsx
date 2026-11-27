@@ -32,8 +32,8 @@ function Lista() {
 
   return (
     <>
-      <Cabecalho eyebrow={`${visiveis.length} de ${socios.length}`} titulo="Sócios">
-        <Link to="/socios/novo" className="btn btn-red">+ Novo sócio</Link>
+      <Cabecalho titulo="Sócios" descricao={`${visiveis.length} de ${socios.length} sócios`}>
+        <Link to="/socios/novo" className="btn btn-primario">Novo sócio</Link>
       </Cabecalho>
 
       <div className="filtros">
@@ -76,7 +76,7 @@ function Lista() {
             </thead>
             <tbody>
               {visiveis.map((s) => (
-                <tr key={s.id} onClick={() => navigate(`/socios/${s.id}`)}>
+                <tr key={s.id} className={s.estado === 'INATIVO' ? 'linha-inativa' : undefined} onClick={() => navigate(`/socios/${s.id}`)}>
                   <td>
                     <Link to={`/socios/${s.id}`} onClick={(e) => e.stopPropagation()}>{s.nome}</Link>
                     {s.estado === 'INATIVO' && <span className="etiqueta">Inativo</span>}

@@ -7,19 +7,19 @@ export function Aguardar({ children }) {
     return (
       <div className="aviso aviso-erro">
         <p>Não foi possível carregar os dados: {erro}</p>
-        <button className="btn btn-ghost" onClick={recarregar}>Tentar de novo</button>
+        <button className="btn" onClick={recarregar}>Tentar de novo</button>
       </div>
     )
   if (!socios || !planos) return <p className="muted">A carregar…</p>
   return children
 }
 
-export function Cabecalho({ eyebrow, titulo, children }) {
+export function Cabecalho({ titulo, descricao, children }) {
   return (
     <div className="cabecalho">
       <div>
-        {eyebrow && <p className="eyebrow">{eyebrow}</p>}
         <h1 className="titulo">{titulo}</h1>
+        {descricao && <p className="descricao">{descricao}</p>}
       </div>
       {children && <div className="cabecalho-acoes">{children}</div>}
     </div>

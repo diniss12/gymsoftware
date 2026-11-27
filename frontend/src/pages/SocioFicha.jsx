@@ -44,17 +44,17 @@ function Ficha() {
 
   return (
     <>
-      <Cabecalho eyebrow={ativo ? 'Sócio ativo' : `Inativo desde ${dataPt(socio.dataSaida)}`} titulo={socio.nome}>
-        <button className="btn btn-red" onClick={() => setAcao('pagamento')}>Registar pagamento</button>
-        <Link to={`/socios/${id}/editar`} className="btn btn-ghost">Editar dados</Link>
-        {ativo ? (
+      <Cabecalho
+        titulo={
           <>
-            <button className="btn btn-ghost" onClick={() => setAcao('plano')}>Mudar plano</button>
-            <button className="btn btn-ghost" onClick={() => setAcao('inativar')}>Inativar</button>
+            {socio.nome}
+            {!ativo && <span className="etiqueta">Inativo desde {dataPt(socio.dataSaida)}</span>}
           </>
-        ) : (
-          <button className="btn btn-ghost" onClick={() => setAcao('reativar')}>Reativar</button>
-        )}
+        }
+        descricao={`Sócio desde ${dataPt(socio.dataEntrada)} · NIF ${socio.nif}`}
+      >
+        <Link to={`/socios/${id}/editar`} className="btn">Editar dados</Link>
+        <button className="btn btn-primario" onClick={() => setAcao('pagamento')}>Registar pagamento</button>
       </Cabecalho>
 
       {acao === 'pagamento' && (
@@ -65,21 +65,31 @@ function Ficha() {
       )}
 
       <div className="ficha-grelha">
-        <section className="cartao cartao-destaque">
+        <section className="cartao">
           <p className="cartao-lbl">Plano atual</p>
           {ativo && plano ? (
             <>
-              <p className="cartao-grande">{plano.nome}</p>
-              <p className="muted">{euros(plano.precoMensal)}/mês · {vezes(plano)} · desde {dataPt(socio.planoDesde)}</p>
+              <p className="plano-nome">{plano.nome}</p>
+              <p className="plano-detalhe">{euros(plano.precoMensal)}/mês · {vezes(plano)} · desde {dataPt(socio.planoDesde)}</p>
             </>
           ) : (
-            <p className="cartao-grande">Sem plano</p>
+            <p className="plano-nome">Sem plano</p>
           )}
+          <div className="cartao-acoes">
+            {ativo ? (
+              <>
+                <button className="btn btn-pequeno" onClick={() => setAcao('plano')}>Mudar plano</button>
+                <button className="btn btn-pequeno btn-perigo" onClick={() => setAcao('inativar')}>Inativar sócio</button>
+              </>
+            ) : (
+              <button className="btn btn-pequeno" onClick={() => setAcao('reativar')}>Reativar sócio</button>
+            )}
+          </div>
         </section>
 
         <section className="cartao">
+          <h2 className="cartao-titulo">Dados pessoais</h2>
           <dl className="dados">
-            <dt>NIF</dt><dd className="mono">{socio.nif}</dd>
             <dt>Sexo</dt><dd>{SEXOS[socio.sexo] ?? '—'}</dd>
             <dt>Nascimento</dt><dd>{dataPt(socio.dataNascimento)} ({idade(socio.dataNascimento)} anos)</dd>
             <dt>Sócio desde</dt><dd>{dataPt(socio.dataEntrada)}</dd>
@@ -115,7 +125,7 @@ function Ficha() {
                 <td>{p.planoNome}</td>
                 <td className="num">{euros(p.precoMensal)}</td>
                 <td>{dataPt(p.dataInicio)}</td>
-                <td>{p.dataFim ? dataPt(p.dataFim) : <span className="etiqueta etiqueta-red">Atual</span>}</td>
+                <td>{p.dataFim ? dataPt(p.dataFim) : <span className="etiqueta">Atual</span>}</td>
               </tr>
             ))}
           </tbody>
@@ -155,7 +165,7 @@ function Acao({ acao, socio, onFeito, onCancelar }) {
 
   return (
     <form className="painel-acao" onSubmit={confirmar}>
-      <p className="eyebrow">{t.titulo}</p>
+      <h2 className="painel-titulo">{t.titulo}</h2>
       <div className="painel-campos">
         {acao !== 'inativar' && (
           <label>
@@ -178,8 +188,8 @@ function Acao({ acao, socio, onFeito, onCancelar }) {
       )}
       <Erro>{erro}</Erro>
       <div className="formulario-acoes">
-        <button className="btn btn-red" disabled={aGravar}>{aGravar ? 'A gravar…' : t.botao}</button>
-        <button type="button" className="btn btn-ghost" onClick={onCancelar}>Cancelar</button>
+        <button className={`btn ${acao === 'inativar' ? 'btn-perigo' : 'btn-primario'}`} disabled={aGravar}>{aGravar ? 'A gravar…' : t.botao}</button>
+        <button type="button" className="btn" onClick={onCancelar}>Cancelar</button>
       </div>
     </form>
   )

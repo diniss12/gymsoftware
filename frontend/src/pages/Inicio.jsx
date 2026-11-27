@@ -75,8 +75,8 @@ function Painel() {
 
   return (
     <>
-      <Cabecalho eyebrow={dataPt(hojeISO())} titulo="Início">
-        <Link to="/socios/novo" className="btn btn-red">+ Novo sócio</Link>
+      <Cabecalho titulo="Início" descricao={`Situação dos pagamentos a ${dataPt(hojeISO())}`}>
+        <Link to="/socios/novo" className="btn btn-primario">Novo sócio</Link>
       </Cabecalho>
 
       <Erro>{erro}</Erro>
@@ -102,11 +102,11 @@ function Painel() {
           </div>
 
           <h2 className="subtitulo">Mensalidades em atraso</h2>
-          <p className="cartao-sub">
+          <p className="texto-ajuda">
             A mensalidade de cada mês pode ser paga até ao dia {DIA_LIMITE} do mês seguinte. Depois disso aparece aqui.
           </p>
           {r.atrasos.length === 0 ? (
-            <p className="vazio vazio-ok">Tudo em dia. Não há mensalidades em atraso.</p>
+            <p className="vazio">Tudo em dia. Não há mensalidades em atraso.</p>
           ) : (
             <div className="tabela-scroll">
               <table className="tabela tabela-clicavel">
@@ -115,7 +115,6 @@ function Painel() {
                     <th>Sócio</th>
                     <th>Meses em atraso</th>
                     <th className="num">Valor</th>
-                    <th></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -133,7 +132,6 @@ function Painel() {
                         ))}
                       </td>
                       <td className="num">{euros(total)}</td>
-                      <td className="num"><span className="seta">Registar →</span></td>
                     </tr>
                   ))}
                 </tbody>
