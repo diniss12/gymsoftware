@@ -16,6 +16,7 @@ morada. O perfil de inferencia "eu." mantem o processamento na UE.
 
 import json
 import os
+import re
 from datetime import date
 from functools import cache
 
@@ -97,6 +98,23 @@ def procurar_socio(nome: str = "", **_) -> dict:
             for s in encontrados[:10]
         ],
         "truncado": len(encontrados) > 10,
+    }
+
+
+def listar_socios(estado: str = "ATIVO", **_) -> dict:
+    estado = (estado or "ATIVO").upper()
+    if estado not in ("ATIVO", "INATIVO", "TODOS"):
+        raise ErroApi(400, "estado tem de ser ATIVO, INATIVO ou TODOS.")
+    planos = _planos_por_id()
+    lista = [s for s in repo.listar_socios() if estado == "TODOS" or s["estado"] == estado]
+    return {
+        "estado": estado,
+        "total": len(lista),
+        "socios": [
+            {"socio_id": s["id"], "nome": s["nome"], "estado": s["estado"], "plano": planos.get(s.get("planoId"), {}).get("nome")}
+            for s in lista[:MAX_LISTA]
+        ],
+        "truncado": len(lista) > MAX_LISTA,
     }
 
 
@@ -276,6 +294,8 @@ def _S(props: dict, req=()) -> dict:
 FERRAMENTAS = {
     "procurar_socio": (procurar_socio, "Procura sócios pelo nome (ou parte do nome, sem acentos). Devolve socio_id, nome, estado e plano. Usa sempre antes de ficha_socio ou propor_pagamento.",
                        _S({"nome": {"type": "string", "description": "Nome ou parte do nome"}}, ["nome"])),
+    "listar_socios": (listar_socios, "Lista os sócios (clientes) por ordem alfabética: nomes, estado e plano (máx. 30). Usa para perguntas como 'quem são os meus clientes' ou 'como se chama o meu cliente'.",
+                      _S({"estado": {"type": "string", "enum": ["ATIVO", "INATIVO", "TODOS"], "description": "Por omissão ATIVO"}})),
     "ficha_socio": (ficha_socio, "Ficha de um sócio: plano atual, histórico de planos, últimos pagamentos e meses em atraso / por pagar.",
                     _S({"socio_id": {"type": "string"}}, ["socio_id"])),
     "pagamentos_em_atraso": (pagamentos_em_atraso, "Todos os sócios com mensalidades em atraso (com valores), quanto entrou este mês e o que do mês anterior ainda está no prazo.", _S({})),
@@ -319,7 +339,9 @@ def executar(nome: str, entrada: dict, propostas: list) -> tuple[dict, bool]:
 
 # ================================================================ modelo
 def system_prompt(hoje: date) -> str:
-    return f"""És o assistente da área de gestão do ginásio Ativo Fitness. Falas com o dono do ginásio, em português de Portugal.
+    return f"""És o assistente da área de gestão do ginásio Ativo Fitness. Falas com o dono do ginásio.
+
+Responde SEMPRE em português de Portugal, mesmo que os resultados das ferramentas, os erros ou o teu raciocínio estejam noutra língua.
 
 Hoje é {DIAS[hoje.weekday()]}, {hoje.isoformat()}.
 
@@ -327,7 +349,8 @@ Regras:
 - Responde só com base nos resultados das ferramentas. Nunca inventes nomes, números, valores ou datas. Se as ferramentas não tiverem a informação, diz que não sabes.
 - Os valores já vêm em euros (campos *_eur): usa-os tal como vêm, sem fazer contas de cabeça. Escreve euros como 23,00 €.
 - Respostas curtas e diretas. Listas só quando há várias linhas.
-- "Sócios" são os clientes do ginásio. Meses no formato AAAA-MM; quando o utilizador diz só o mês (ex.: "junho"), é a ocorrência mais recente desse mês até ao mês seguinte ao atual.
+- "Sócios" e "clientes" são a mesma coisa. Para saber nomes sem pista nenhuma, usa listar_socios; com parte do nome, usa procurar_socio.
+- Se uma ferramenta devolver um erro, tenta resolver com outra ferramenta antes de pedir mais informação ao utilizador. Meses no formato AAAA-MM; quando o utilizador diz só o mês (ex.: "junho"), é a ocorrência mais recente desse mês até ao mês seguinte ao atual.
 - Para registar um pagamento: procura o sócio com procurar_socio; se houver mais do que um com esse nome, pergunta qual. Se não souberes o método (MB WAY ou dinheiro), pergunta. Depois usa propor_pagamento. Nunca digas que o pagamento ficou registado: diz que preparaste o registo e que falta confirmar no cartão abaixo.
 - Não consegues inscrever sócios, editar fichas, mudar planos nem apagar dados: indica o ecrã da aplicação onde se faz isso (ex.: "Sócios → Novo sócio").
 - Não há registo de entradas (check-ins) nem presenças.
@@ -359,6 +382,15 @@ def _validar_historico(body: dict) -> list[dict]:
     return msgs
 
 
+_PENSAMENTO = re.compile(r"<thinking>.*?(</thinking>|$)", re.S | re.I)
+
+
+def limpar(texto: str) -> str:
+    """Tira o raciocinio que alguns modelos (ex.: Nova) escrevem entre
+    <thinking>...</thinking>: e interno, nao e para o utilizador ver."""
+    return _PENSAMENTO.sub("", texto).replace("</thinking>", "").strip()
+
+
 def conversar(msgs: list[dict]) -> tuple[str, list[dict]]:
     """Loop do agente: o modelo pede ferramentas, corremo-las, devolvemos os
     resultados, ate ele responder em texto (ou ate MAX_VOLTAS)."""
@@ -376,7 +408,7 @@ def conversar(msgs: list[dict]) -> tuple[str, list[dict]]:
         msgs.append(saida)
         usos = [b["toolUse"] for b in saida["content"] if "toolUse" in b]
         if r["stopReason"] != "tool_use" or not usos:
-            texto = "\n".join(b["text"] for b in saida["content"] if "text" in b).strip()
+            texto = limpar("\n".join(b["text"] for b in saida["content"] if "text" in b))
             return texto or "Não consegui responder a isso.", propostas
         resultados = []
         for u in usos:

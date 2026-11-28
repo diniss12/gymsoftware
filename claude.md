@@ -64,8 +64,9 @@ API: GET/POST /planos, PUT /planos/{id}; GET /periodos (todos, com socioId); GET
 Assistente (chat)
 Lambda própria (ChatFunction, handler chat.lambda_handler, mesmo código em backend/) com role SÓ DE LEITURA na tabela + UpdateItem limitado por IAM a chaves LIMITE#* (contador diário, CHAT_LIMITE_DIA=50 perguntas/dia → 429). Rota POST /chat (mais específica que /{proxy+}), timeout 29 s, máx. 5 chamadas ao modelo por pergunta.
 Modelo: Amazon Nova Lite via Bedrock Converse API (parâmetro ChatModelId = eu.amazon.nova-lite-v1:0 + ChatFoundationModel para o IAM). Claude Haiku 5.5 no Bedrock dá "not available for this account" (provavelmente conta no Free plan); trocar de modelo = mudar os dois parâmetros.
-Ferramentas: procurar_socio, ficha_socio, pagamentos_em_atraso, receita, resumo_socios, listar_planos, propor_pagamento. Valores já em euros (arredondados em Python); números vêm sempre do regras.py. Sem NIF/nascimento/morada nos resultados.
+Ferramentas: listar_socios, procurar_socio, ficha_socio, pagamentos_em_atraso, receita, resumo_socios, listar_planos, propor_pagamento. Valores já em euros (arredondados em Python); números vêm sempre do regras.py. Sem NIF/nascimento/morada nos resultados.
 propor_pagamento NÃO grava: devolve uma proposta; o frontend (página Assistente) mostra um cartão e só ao Confirmar chama POST /socios/{id}/pagamentos (API normal). Criar sócios pelo chat: não (usa o formulário).
+Nova Lite escreve raciocínio em <thinking>…</thinking> (em inglês): chat.limpar() tira-o antes de responder; o system prompt insiste em PT-PT e trata "clientes" = "sócios".
 Histórico da conversa só no browser; enviado inteiro em cada pedido (máx. 20 mensagens).
 AWS
 Conta 659791935620, região eu-west-1, stack gymsoftware.

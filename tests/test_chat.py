@@ -186,3 +186,31 @@ def test_limite_diario(monkeypatch):
     assert pergunta("2")[0] == 200
     s, r = pergunta("3")
     assert s == 429 and "Limite diário" in r["message"]
+
+
+# ---------------------------------------------------------------- correcoes apos o 1.o uso real (Nova Lite)
+@pytest.mark.parametrize(
+    "bruto,limpo",
+    [
+        ("<thinking>The tool returned an error.</thinking>\n\nO teu cliente chama-se Leandro.", "O teu cliente chama-se Leandro."),
+        ("Olá<thinking>a\nb</thinking> mundo", "Olá mundo"),
+        ("Resposta.<thinking>raciocínio cortado sem fecho", "Resposta."),
+        ("Sem tags.", "Sem tags."),
+    ],
+)
+def test_limpar_raciocinio(bruto, limpo):
+    assert chat.limpar(bruto) == limpo
+
+
+def test_raciocinio_nao_chega_ao_ecra(monkeypatch):
+    monkeypatch.setattr(chat, "bedrock", lambda: ModeloFalso(diz("<thinking>pensar em inglês</thinking>Tens 1 sócio.")))
+    s, r = pergunta("quantos sócios?")
+    assert s == 200 and r["resposta"] == "Tens 1 sócio."
+
+
+def test_listar_socios(socios):
+    r = chat.listar_socios()
+    assert r["total"] == 2 and [x["nome"] for x in r["socios"]] == ["Bruno Costa", "Leandro Silva"]
+    assert "123456789" not in json.dumps(r)
+    assert chat.listar_socios(estado="INATIVO")["total"] == 0
+    assert chat.executar("listar_socios", {"estado": "X"}, [])[1] is False
