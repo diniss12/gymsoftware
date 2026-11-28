@@ -123,7 +123,7 @@ function Painel() {
       ) : (
         <div className="graficos">
           <section className="cartao col-total">
-            <h2 className="cartao-titulo">Receita por mês</h2>
+            <h2 className="cartao-titulo">Receita prevista por mês</h2>
             <p className="cartao-sub">
               Prevista pelos planos em vigor em cada mês, não pelos pagamentos recebidos. Quem mudou de plano a meio do mês conta com o último plano.
             </p>

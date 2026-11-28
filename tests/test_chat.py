@@ -228,3 +228,28 @@ def test_aniversariantes(socios, monkeypatch):
 def test_system_prompt_obriga_a_usar_ferramentas():
     p = chat.system_prompt(date(2027, 1, 5))
     assert "usa primeiro uma ferramenta" in p and "Não tenho acesso a essa informação" in p
+
+
+@pytest.mark.parametrize(
+    "bruto,limpo",
+    [
+        ("A receita em junho foi 1012 €.\n\n<response>A receita cresceu 551 €.</response>", "A receita cresceu 551 €."),
+        ("<thinking>x</thinking><response>Só isto.</response>", "Só isto."),
+        ("Texto<response></response>", "Texto"),
+        ("Resposta sem fecho <response>final", "final"),
+    ],
+)
+def test_limpar_resposta(bruto, limpo):
+    assert chat.limpar(bruto) == limpo
+
+
+def test_receita_compara_meses_em_python(socios):
+    # socios: 2 x 25 EUR desde 2026-01; Leandro pagou 2026-11 a 2026-12-01; hoje fixo 2027-01-05
+    r = chat.receita(mes_inicio="2026-06", mes_fim="2026-12")
+    c = r["comparacao"]
+    assert c["de"] == "2026-06" and c["ate"] == "2026-12"
+    assert c["prevista"] == {"inicio_eur": 50.0, "fim_eur": 50.0, "diferenca_eur": 0.0, "variacao_percentual": 0.0}
+    assert c["recebida"] == {"inicio_eur": 0.0, "fim_eur": 25.0, "diferenca_eur": 25.0, "variacao_percentual": None}
+    assert chat.receita(mes_inicio="2020-01")["comparacao"]["prevista"] == {"erro": "mês fora dos últimos 12 meses"}
+    assert chat.receita()["comparacao"] is None
+    assert chat.executar("receita", {"mes_inicio": "junho"}, [])[1] is False

@@ -177,20 +177,44 @@ def pagamentos_em_atraso(**_) -> dict:
     }
 
 
-def receita(**_) -> dict:
+def _comparar(serie: dict, inicio: str, fim: str) -> dict:
+    """Diferenca e variacao entre dois meses, calculadas aqui (o modelo nao faz contas)."""
+    a, b = serie.get(inicio), serie.get(fim)
+    if a is None or b is None:
+        return {"erro": "mês fora dos últimos 12 meses"}
+    return {
+        "inicio_eur": eur(a),
+        "fim_eur": eur(b),
+        "diferenca_eur": eur(b - a),
+        "variacao_percentual": round((b - a) / a * 100, 1) if a else None,
+    }
+
+
+def receita(mes_inicio: str = "", mes_fim: str = "", **_) -> dict:
     hoje = v.hoje().isoformat()
     pagamentos = repo.listar_pagamentos("0000-00")
     metodos = regras.recebido_por_metodo(pagamentos, hoje)
+    recebido = regras.recebido_por_mes(pagamentos, hoje)
+    prevista = regras.receita_prevista_por_mes(repo.listar_periodos(), hoje)
+    comparacao = None
+    if mes_inicio or mes_fim:
+        inicio = v.mes({"mes_inicio": mes_inicio}, "mes_inicio")
+        fim = v.mes({"mes_fim": mes_fim or hoje[:7]}, "mes_fim")
+        comparacao = {
+            "de": inicio,
+            "ate": fim,
+            "prevista": _comparar({l["mes"]: l["receita"] for l in prevista}, inicio, fim),
+            "recebida": _comparar({l["mes"]: l["valor"] for l in recebido}, inicio, fim),
+        }
     return {
-        "nota": "recebido = dinheiro que entrou em cada mês (pela data de pagamento); "
-        "prevista = soma dos planos em vigor em cada mês (o que devia entrar).",
-        "recebido_por_mes": [
-            {"mes": l["mes"], "valor_eur": eur(l["valor"]), "pagamentos": l["n"]}
-            for l in regras.recebido_por_mes(pagamentos, hoje)
-        ],
+        "comparacao": comparacao,
+        "nota": "prevista = soma dos planos em vigor em cada mês (é a 'Receita por mês' do ecrã Estatísticas); "
+        "recebida = dinheiro que entrou em cada mês (pagamentos, pela data de pagamento).",
         "prevista_por_mes": [
-            {"mes": l["mes"], "valor_eur": eur(l["receita"]), "socios": l["socios"]}
-            for l in regras.receita_prevista_por_mes(repo.listar_periodos(), hoje)
+            {"mes": l["mes"], "valor_eur": eur(l["receita"]), "socios": l["socios"]} for l in prevista
+        ],
+        "recebida_por_mes": [
+            {"mes": l["mes"], "valor_eur": eur(l["valor"]), "pagamentos": l["n"]} for l in recebido
         ],
         "recebido_ultimos_12_meses_por_metodo": {
             "desde": metodos["desde"],
@@ -321,7 +345,9 @@ FERRAMENTAS = {
     "ficha_socio": (ficha_socio, "Ficha de um sócio: plano atual, histórico de planos, últimos pagamentos e meses em atraso / por pagar.",
                     _S({"socio_id": {"type": "string"}}, ["socio_id"])),
     "pagamentos_em_atraso": (pagamentos_em_atraso, "Todos os sócios com mensalidades em atraso (com valores), quanto entrou este mês e o que do mês anterior ainda está no prazo.", _S({})),
-    "receita": (receita, "Dinheiro recebido por mês (12 meses), receita prevista pelos planos por mês e recebido por método (MB WAY / dinheiro).", _S({})),
+    "receita": (receita, "Receita prevista (planos) e recebida (pagamentos) por mês nos últimos 12 meses, e recebida por método. "
+                "Para comparar dois meses (crescimento, diferença), passa mes_inicio e mes_fim: a diferença e a percentagem vêm já calculadas em 'comparacao'.",
+                _S({"mes_inicio": {"type": "string", "description": "AAAA-MM"}, "mes_fim": {"type": "string", "description": "AAAA-MM; omite para o mês atual"}})),
     "resumo_socios": (resumo_socios, "Número de sócios ativos e inativos, ativos por plano, e entradas/saídas por mês (12 meses).", _S({})),
     "aniversariantes": (aniversariantes, "Sócios ativos que fazem anos num mês (por omissão o mês atual): nome, dia e idade que fazem.",
                         _S({"mes": {"type": "integer", "description": "1 a 12; omite para o mês atual"}})),
@@ -372,8 +398,9 @@ Hoje é {DIAS[hoje.weekday()]}, {hoje.isoformat()}.
 Regras:
 - Para QUALQUER pergunta sobre sócios, pagamentos, planos, receita ou aniversários, usa primeiro uma ferramenta. Nunca respondas de memória nem por suposição.
 - Responde só com base nos resultados das ferramentas. Nunca inventes nomes, números, valores ou datas. Se nenhuma ferramenta tiver a informação, responde "Não tenho acesso a essa informação." em vez de adivinhar.
-- Os valores já vêm em euros (campos *_eur): usa-os tal como vêm, sem fazer contas de cabeça. Escreve euros como 23,00 €.
-- Respostas curtas e diretas. Listas só quando há várias linhas.
+- Os valores já vêm em euros (campos *_eur): usa-os tal como vêm. Nunca faças contas (somas, diferenças, percentagens): se precisares de uma, usa os parâmetros da ferramenta que a calcula (ex.: receita com mes_inicio e mes_fim). Escreve euros como 23,00 €.
+- "Receita" tem duas medidas: a PREVISTA (soma dos planos; é a que aparece no gráfico "Receita por mês" das Estatísticas) e a RECEBIDA (pagamentos registados). Se o utilizador disser só "receita", usa a prevista e diz que é a prevista; podes acrescentar a recebida numa segunda frase. Diz sempre qual das duas estás a usar.
+- Respostas curtas e diretas, só com a resposta final, sem etiquetas XML (nada de <response> ou <thinking>). Listas só quando há várias linhas.
 - "Sócios" e "clientes" são a mesma coisa. Para saber nomes sem pista nenhuma, usa listar_socios; com parte do nome, usa procurar_socio.
 - Se uma ferramenta devolver um erro, tenta resolver com outra ferramenta antes de pedir mais informação ao utilizador. Meses no formato AAAA-MM; quando o utilizador diz só o mês (ex.: "junho"), é a ocorrência mais recente desse mês até ao mês seguinte ao atual.
 - Para registar um pagamento: procura o sócio com procurar_socio; se houver mais do que um com esse nome, pergunta qual. Se não souberes o método (MB WAY ou dinheiro), pergunta. Depois usa propor_pagamento. Nunca digas que o pagamento ficou registado: diz que preparaste o registo e que falta confirmar no cartão abaixo.
@@ -410,10 +437,18 @@ def _validar_historico(body: dict) -> list[dict]:
 _PENSAMENTO = re.compile(r"<thinking>.*?(</thinking>|$)", re.S | re.I)
 
 
+_RESPOSTA = re.compile(r"<response>(.*?)(</response>|$)", re.S | re.I)
+
+
 def limpar(texto: str) -> str:
-    """Tira o raciocinio que alguns modelos (ex.: Nova) escrevem entre
-    <thinking>...</thinking>: e interno, nao e para o utilizador ver."""
-    return _PENSAMENTO.sub("", texto).replace("</thinking>", "").strip()
+    """Tira as marcas internas que alguns modelos (ex.: Nova) escrevem:
+    o raciocinio <thinking>...</thinking> desaparece; se houver um bloco
+    <response>...</response>, essa e a resposta final e fica so ela."""
+    texto = _PENSAMENTO.sub("", texto).replace("</thinking>", "")
+    final = _RESPOSTA.search(texto)
+    if final and final.group(1).strip():
+        texto = final.group(1)
+    return texto.replace("<response>", "").replace("</response>", "").strip()
 
 
 def conversar(msgs: list[dict]) -> tuple[str, list[dict]]:
