@@ -1,17 +1,13 @@
 // Pagamentos na ficha do socio: formulario de registo + historico.
+// O que falta pagar (socio.situacao) vem calculado do backend (regras.py).
 
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { api } from '../api.js'
-import { METODOS, dataPt, euros, hojeISO, mesCurto, mesNome, mesSeguinte, paraCentimos, prazo, situacao } from '../util.js'
+import { METODOS, dataPt, euros, hojeISO, mesCurto, mesNome, mesSeguinte, paraCentimos } from '../util.js'
 import { Erro } from './comum.jsx'
 
-/** Resumo do que falta pagar (usado no topo da ficha). */
-export function useSituacao(socio) {
-  return useMemo(() => situacao(socio.historico, socio.pagamentos), [socio.historico, socio.pagamentos])
-}
-
 export function RegistarPagamento({ socio, onFeito, onCancelar }) {
-  const { emAtraso, dentroDoPrazo } = useSituacao(socio)
+  const { emAtraso, dentroDoPrazo } = socio.situacao
   const pagos = new Set(socio.pagamentos.map((p) => p.mes))
   const proximo = mesSeguinte(hojeISO().slice(0, 7))
 
@@ -113,7 +109,7 @@ export function RegistarPagamento({ socio, onFeito, onCancelar }) {
 }
 
 export function HistoricoPagamentos({ socio, onApagado }) {
-  const { emAtraso, dentroDoPrazo } = useSituacao(socio)
+  const { emAtraso, dentroDoPrazo } = socio.situacao
   const [erro, setErro] = useState('')
   const lista = [...socio.pagamentos].reverse() // mais recente primeiro
 
@@ -122,7 +118,7 @@ export function HistoricoPagamentos({ socio, onApagado }) {
     setErro('')
     try {
       await api(`/socios/${socio.id}/pagamentos/${p.mes}`, { method: 'DELETE' })
-      onApagado(p.mes)
+      onApagado()
     } catch (e) {
       setErro(e.message)
     }
@@ -134,13 +130,13 @@ export function HistoricoPagamentos({ socio, onApagado }) {
       {(emAtraso.length > 0 || dentroDoPrazo.length > 0) && (
         <div className="por-pagar">
           {emAtraso.map((d) => (
-            <span key={d.mes} className="chip chip-atraso" title={`Prazo: ${dataPt(prazo(d.mes))}`}>
+            <span key={d.mes} className="chip chip-atraso" title={`Prazo: ${dataPt(d.prazo)}`}>
               {mesCurto(d.mes)} · {euros(d.valor)} · em atraso
             </span>
           ))}
           {dentroDoPrazo.map((d) => (
-            <span key={d.mes} className="chip" title={`Prazo: ${dataPt(prazo(d.mes))}`}>
-              {mesCurto(d.mes)} · {euros(d.valor)} · até {dataPt(prazo(d.mes)).slice(0, 5)}
+            <span key={d.mes} className="chip" title={`Prazo: ${dataPt(d.prazo)}`}>
+              {mesCurto(d.mes)} · {euros(d.valor)} · até {dataPt(d.prazo).slice(0, 5)}
             </span>
           ))}
         </div>

@@ -29,7 +29,7 @@ export function DadosProvider({ children }) {
 
   /** Atualiza (ou acrescenta) um socio na lista local depois de uma gravacao. */
   const guardarSocio = useCallback((socio) => {
-    const { historico, ...ficha } = socio
+    const { historico, pagamentos, situacao, ...ficha } = socio // so a ficha vai para a lista
     setSocios((lista) => {
       const outros = (lista ?? []).filter((s) => s.id !== ficha.id)
       return [...outros, ficha].sort((a, b) => a.nome.localeCompare(b.nome, 'pt'))

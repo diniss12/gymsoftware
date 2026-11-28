@@ -21,9 +21,13 @@ function Ficha() {
   const [erro, setErro] = useState('')
   const [acao, setAcao] = useState(null) // 'pagamento' | 'plano' | 'inativar' | 'reativar'
 
+  // A ficha traz historico, pagamentos e a situacao (o que falta pagar) ja
+  // calculada no backend; depois de registar/apagar um pagamento volta a ler-se.
+  const ler = () => api(`/socios/${id}`).then(setSocio).catch((e) => setErro(e.message))
+
   useEffect(() => {
     setSocio(null)
-    api(`/socios/${id}`).then(setSocio).catch((e) => setErro(e.message))
+    ler()
   }, [id])
 
   if (!socio) return erro ? <Erro>{erro}</Erro> : <p className="muted">A carregar…</p>
@@ -33,11 +37,10 @@ function Ficha() {
     guardarSocio(s)
     setAcao(null)
   }
-  const pagamentoRegistado = (p) => {
-    setSocio((s) => ({ ...s, pagamentos: [...s.pagamentos, p].sort((a, b) => a.mes.localeCompare(b.mes)) }))
+  const pagamentoRegistado = () => {
     setAcao(null)
+    ler()
   }
-  const pagamentoApagado = (mes) => setSocio((s) => ({ ...s, pagamentos: s.pagamentos.filter((p) => p.mes !== mes) }))
   const ativo = socio.estado === 'ATIVO'
   const plano = planoPorId[socio.planoId]
   const historico = [...socio.historico].reverse() // mais recente primeiro
@@ -106,7 +109,7 @@ function Ficha() {
         )}
       </div>
 
-      <HistoricoPagamentos socio={socio} onApagado={pagamentoApagado} />
+      <HistoricoPagamentos socio={socio} onApagado={ler} />
 
       <h2 className="subtitulo">Histórico de planos</h2>
       <div className="tabela-scroll">

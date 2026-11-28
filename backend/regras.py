@@ -17,7 +17,7 @@ Regras:
 - Valores em centimos (int).
 """
 
-from validacao import mes_seguinte
+from validacao import METODOS, mes_seguinte
 
 INICIO_COBRANCA = "2026-11"
 DIA_LIMITE = 8
@@ -59,9 +59,10 @@ def meses_devidos(periodos: list[dict], ate: str) -> list[dict]:
 
 
 def situacao(periodos: list[dict], pagamentos: list[dict], hoje: str) -> dict:
-    """Meses por pagar de um socio, separados pelo prazo. `hoje` em AAAA-MM-DD."""
+    """Meses por pagar de um socio, separados pelo prazo. `hoje` em AAAA-MM-DD.
+    Cada mes leva o seu `prazo` (data limite), para o ecra nao ter de o calcular."""
     pagos = {p["mes"] for p in pagamentos}
-    por_pagar = [d for d in meses_devidos(periodos, hoje[:7]) if d["mes"] not in pagos]
+    por_pagar = [{**d, "prazo": prazo(d["mes"])} for d in meses_devidos(periodos, hoje[:7]) if d["mes"] not in pagos]
     return {
         "emAtraso": [d for d in por_pagar if prazo(d["mes"]) < hoje],
         "dentroDoPrazo": [d for d in por_pagar if prazo(d["mes"]) >= hoje],
@@ -115,8 +116,28 @@ def resumo_pagamentos(socios: list[dict], periodos: list[dict], pagamentos: list
         "recebidoMes": sum(p["valor"] for p in do_mes),
         "nRecebidoMes": len(do_mes),
         "mesAnterior": mes_anterior(mes_atual),
+        "prazoMesAnterior": prazo(mes_anterior(mes_atual)),
         "dentroDoPrazo": n_dentro,
         "valorDentroDoPrazo": valor_dentro,
+        "diaLimite": DIA_LIMITE,
+    }
+
+
+def recebido_por_metodo(pagamentos: list[dict], hoje: str, meses: int = 12) -> dict:
+    """Valor RECEBIDO (pela dataPagamento) nos ultimos `meses` meses, incluindo
+    o atual, por metodo de pagamento."""
+    desde = f"{mes_anterior(hoje[:7], meses - 1)}-01"
+    recentes = [p for p in pagamentos if desde <= p["dataPagamento"] <= hoje]
+    return {
+        "desde": desde,
+        "metodos": [
+            {
+                "metodo": m,
+                "valor": sum(p["valor"] for p in recentes if p["metodo"] == m),
+                "n": sum(1 for p in recentes if p["metodo"] == m),
+            }
+            for m in METODOS
+        ],
     }
 
 

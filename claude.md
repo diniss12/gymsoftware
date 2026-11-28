@@ -28,7 +28,9 @@ template.yaml                  # SAM — TEM de estar na raiz
 backend/app.py                 # rotas + regras de negócio
 backend/repo.py                # acesso ao DynamoDB (itens, transações)
 backend/validacao.py           # validação de campos, NIF, ULID, datas (Europe/Lisbon)
+backend/regras.py              # FONTE ÚNICA das regras de pagamentos/receita (meses devidos, prazos, atrasos, receita prevista, recebido por método); funções puras usadas pela API e pelo chat
 backend/requirements.txt       # aws-lambda-powertools>=3,<4, tzdata
+tests/test_regras.py           # testes puros das regras (casos-limite)
 tests/test_api.py              # pytest + moto (DynamoDB simulado); correm SÓ no GitHub Actions (passo "Testes", antes do deploy)
 scripts/planos.json            # planos mensais com ids fixos; carregar UMA vez: aws dynamodb batch-write-item --region eu-west-1 --request-items file://scripts/planos.json (voltar a correr repõe os preços originais)
 requirements-dev.txt           # deps dos testes, instaladas só no CI
@@ -37,7 +39,7 @@ frontend/src/App.jsx           # sessão, router, navegação
 frontend/src/Login.jsx         # login / 1.º acesso / recuperar password
 frontend/src/dados.jsx         # contexto com sócios + planos
 frontend/src/api.js            # fetch com Bearer accessToken; erros → Error(message)
-frontend/src/util.js           # funções puras: euros/cêntimos, datas, idade, NIF, meses, regras de pagamento (mesesDevidos, situacao)
+frontend/src/util.js           # formatação: euros/cêntimos, datas, idade, NIF, nomes de meses (SEM regras de pagamento: essas estão no regras.py)
 frontend/src/pages/            # Inicio (painel de atrasos), Socios, SocioForm, SocioFicha, Pagamentos (componentes usados na ficha), Estatisticas, Planos, comum (Aguardar/Cabecalho/Erro)
 
 Domínio e modelo de dados
@@ -53,10 +55,10 @@ Itens (single-table):
   SOCIO#<id> / PAGAMENTO#<AAAA-MM>  GSI1: PAGAMENTOS / <mes>#<socioId>   1 pagamento por sócio e mês (attribute_not_exists → 409); campos: mes, valor (cêntimos), metodo MBWAY|DINHEIRO, dataPagamento, notas. Apagar = DELETE para corrigir.
   NIF#<nif>  / NIF               garante unicidade via transação com attribute_not_exists
   PLANO#<id> / PLANO             GSI1: PLANOS / <nome normalizado>#<id>
-Pagamentos (regras no frontend, util.js): mensalidade do mês M vence no dia 8 de M+1 (DIA_LIMITE); depois fica "em atraso" no painel Início (/). Um sócio deve cada mês em que teve plano em vigor (≥1 dia), pelo preço do último plano desse mês. Cobrança só a partir de INICIO_COBRANCA = 2026-11 (meses anteriores nunca são dívida). Pode pagar-se adiantado até ao mês seguinte. Estatística "pagamentos por método" = valor recebido nos últimos 12 meses por dataPagamento.
+Pagamentos (regras em backend/regras.py; o frontend só mostra o que GET /resumo/* e GET /socios/{id} devolvem): mensalidade do mês M vence no dia 8 de M+1 (DIA_LIMITE); depois fica "em atraso" no painel Início (/). Um sócio deve cada mês em que teve plano em vigor (≥1 dia), pelo preço do último plano desse mês. Cobrança só a partir de INICIO_COBRANCA = 2026-11 (meses anteriores nunca são dívida). Pode pagar-se adiantado até ao mês seguinte. Estatística "pagamentos por método" = valor recebido nos últimos 12 meses por dataPagamento.
 Escritas de sócio são transações; ficha usa lock otimista (condição atualizadoEm = valor lido).
 Caso-limite conhecido: POST /socios/{id}/plano com data = dataInicio do período atual cria um período de 0 dias (não parte nada, mas suja o histórico).
-API: GET/POST /planos, PUT /planos/{id}; GET /periodos (todos, com socioId); GET /pagamentos[?desde=AAAA-MM]; POST /socios/{id}/pagamentos {mes, valor, metodo, dataPagamento?, notas?}; DELETE /socios/{id}/pagamentos/{mes}; GET /socios/{id} inclui historico + pagamentos; GET /socios[?estado=], GET/PUT /socios/{id}, POST /socios (planoId obrigatório), POST /socios/{id}/plano {planoId, data?}, /inativar {data?}, /reativar {planoId, data?}. Erros: {"message"} com 400/404/409.
+API: GET/POST /planos, PUT /planos/{id}; GET /periodos (todos, com socioId); GET /pagamentos[?desde=AAAA-MM]; POST /socios/{id}/pagamentos {mes, valor, metodo, dataPagamento?, notas?}; DELETE /socios/{id}/pagamentos/{mes}; GET /socios/{id} inclui historico + pagamentos + situacao {emAtraso, dentroDoPrazo} (cada mês com prazo); GET /resumo/pagamentos (painel do Início); GET /resumo/receita {prevista: 12 meses, porMetodo: recebido 12 meses por dataPagamento}; GET /socios[?estado=], GET/PUT /socios/{id}, POST /socios (planoId obrigatório), POST /socios/{id}/plano {planoId, data?}, /inativar {data?}, /reativar {planoId, data?}. Erros: {"message"} com 400/404/409.
 AWS
 Conta 659791935620, região eu-west-1, stack gymsoftware.
 Role de deploy: arn:aws:iam::659791935620:role/GitHubActions-diniss12-gymsoftware (ARN, região e stack estão hardcoded no deploy.yml, sem secrets/variables no GitHub).

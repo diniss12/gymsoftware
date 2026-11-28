@@ -1,15 +1,14 @@
-// Todas as estatisticas sao calculadas no browser: a lista de socios ja esta
-// carregada e o historico de planos (GET /periodos) vem num so pedido.
-// Acrescentar uma estatistica nova e so codigo aqui, sem mexer no backend.
+// Contagens simples sobre os socios (por plano, idade, localidade...) sao
+// calculadas no browser a partir da lista ja carregada. O que envolve regras de
+// dinheiro (receita prevista, recebido por metodo) vem do backend (regras.py),
+// a mesma definicao que o chat usa: GET /resumo/receita.
 
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api.js'
 import { useDados } from '../dados.jsx'
-import { FAIXAS, MESES, METODOS, SEXOS, euros, faixaEtaria, hojeISO, idade, mesAnterior, normalizar } from '../util.js'
+import { FAIXAS, MESES, METODOS, SEXOS, euros, faixaEtaria, hojeISO, idade, normalizar } from '../util.js'
 import { Aguardar, Cabecalho, Erro } from './comum.jsx'
-
-const pad = (n) => String(n).padStart(2, '0')
 
 export default function Estatisticas() {
   return (
@@ -28,74 +27,20 @@ function contar(lista, chave, peso = () => 1) {
   return m
 }
 
-/**
- * Receita prevista de cada um dos ultimos `n` meses, a partir do historico de planos.
- * Regra: um socio conta num mes se teve um plano em vigor em algum dia desse mes;
- * se mudou de plano a meio, conta o ultimo plano do mes (nunca conta duas vezes).
- * dataFim e exclusiva (= dia em que comecou o plano seguinte / data de saida).
- */
-function receitaPorMes(periodos, n = 12) {
-  const hoje = hojeISO()
-  let y = Number(hoje.slice(0, 4))
-  let m = Number(hoje.slice(5, 7))
-  const meses = []
-  for (let i = 0; i < n; i++) {
-    meses.unshift({ y, m })
-    if (--m === 0) [m, y] = [12, y - 1]
-  }
-
-  const porSocio = new Map()
-  for (const p of periodos) porSocio.set(p.socioId, [...(porSocio.get(p.socioId) ?? []), p])
-  const linhas = meses.map(({ y, m }) => {
-    const inicio = `${y}-${pad(m)}-01`
-    const seguinte = m === 12 ? `${y + 1}-01-01` : `${y}-${pad(m + 1)}-01`
-    let receita = 0
-    let socios = 0
-    for (const lista of porSocio.values()) {
-      const noMes = lista.filter((p) => p.dataInicio < seguinte && (!p.dataFim || p.dataFim > inicio))
-      if (!noMes.length) continue
-      const ultimo = noMes.reduce((a, b) => (b.dataInicio > a.dataInicio ? b : a))
-      receita += ultimo.precoMensal
-      socios += 1
-    }
-    return { y, m, receita, socios }
-  })
-
-  // Sem historico antigo (app nova): corta os meses iniciais vazios, mas mostra pelo menos 6.
-  const primeiro = linhas.findIndex((l) => l.socios > 0)
-  return linhas.slice(Math.min(primeiro === -1 ? n : primeiro, n - 6))
-}
-
 function Painel() {
   const { socios, planos, planoPorId } = useDados()
-  const [periodos, setPeriodos] = useState(null)
-  const [erroPeriodos, setErroPeriodos] = useState('')
-
-  const [pagamentos, setPagamentos] = useState(null)
+  const [receita, setReceita] = useState(null)
+  const [erroReceita, setErroReceita] = useState('')
 
   useEffect(() => {
-    api('/periodos').then(setPeriodos).catch((e) => setErroPeriodos(e.message))
+    api('/resumo/receita').then(setReceita).catch((e) => setErroReceita(e.message))
   }, [socios]) // recarrega se a lista de socios mudar (ex.: mudanca de plano)
 
-  // Pagamentos dos ultimos 12 meses (pela data em que foram pagos). Pede-se a
-  // partir de 13 meses de referencia atras para apanhar quem pagou com atraso.
-  const desde12 = mesAnterior(hojeISO().slice(0, 7), 11)
-  useEffect(() => {
-    api(`/pagamentos?desde=${mesAnterior(desde12, 1)}`)
-      .then((lista) => setPagamentos(lista.filter((p) => p.dataPagamento >= `${desde12}-01`)))
-      .catch((e) => setErroPeriodos(e.message))
-  }, [desde12])
-
-  const linhasMetodo = useMemo(() => {
-    if (!pagamentos) return null
-    const valor = contar(pagamentos, (p) => p.metodo, (p) => p.valor)
-    const n = contar(pagamentos, (p) => p.metodo)
-    return Object.entries(METODOS).map(([k, nome]) => ({
-      rotulo: `${nome} · ${n.get(k) ?? 0}`,
-      valor: valor.get(k) ?? 0,
-      dica: `${n.get(k) ?? 0} pagamento(s)`,
-    }))
-  }, [pagamentos])
+  const linhasMetodo = receita?.porMetodo.metodos.map((m) => ({
+    rotulo: `${METODOS[m.metodo] ?? m.metodo} · ${m.n}`,
+    valor: m.valor,
+    dica: `${m.n} pagamento(s)`,
+  }))
 
   const e = useMemo(() => {
     const hoje = hojeISO()
@@ -159,7 +104,7 @@ function Painel() {
     }
   }, [socios, planos, planoPorId])
 
-  const meses = useMemo(() => (periodos ? receitaPorMes(periodos) : null), [periodos])
+  const meses = receita?.prevista
 
   return (
     <>
@@ -173,7 +118,7 @@ function Painel() {
         <Tile rotulo="Inativos" valor={e.inativos} />
       </div>
 
-      {e.ativos === 0 && !periodos?.length ? (
+      {e.ativos === 0 && !meses?.some((l) => l.socios > 0) ? (
         <p className="vazio">Ainda não há sócios ativos para mostrar estatísticas.</p>
       ) : (
         <div className="graficos">
@@ -182,8 +127,8 @@ function Painel() {
             <p className="cartao-sub">
               Prevista pelos planos em vigor em cada mês, não pelos pagamentos recebidos. Quem mudou de plano a meio do mês conta com o último plano.
             </p>
-            <Erro>{erroPeriodos}</Erro>
-            {!meses && !erroPeriodos && <p className="muted">A carregar…</p>}
+            <Erro>{erroReceita}</Erro>
+            {!meses && !erroReceita && <p className="muted">A carregar…</p>}
             {meses && <Colunas meses={meses} />}
           </section>
 
@@ -263,22 +208,24 @@ function Colunas({ meses }) {
   return (
     <div className="colunas" role="list">
       {meses.map((l, i) => {
+        const y = l.mes.slice(0, 4)
+        const m = Number(l.mes.slice(5, 7))
         const atual = i === meses.length - 1
         const mostrar = atual || i === iMax
         return (
           <div
-            key={`${l.y}-${l.m}`}
+            key={l.mes}
             className={`coluna${atual ? ' coluna-atual' : ''}`}
             role="listitem"
-            title={`${MESES[l.m - 1]} ${l.y}: ${euros(l.receita)} · ${l.socios} sócio(s)`}
+            title={`${MESES[m - 1]} ${y}: ${euros(l.receita)} · ${l.socios} sócio(s)`}
           >
             <span className="coluna-valor">{mostrar && l.receita > 0 ? euros(l.receita) : ''}</span>
             <span className="coluna-pista">
               <span className="coluna-barra" style={{ height: `${(l.receita / max) * 100}%` }} />
             </span>
             <span className="coluna-mes">
-              {MESES[l.m - 1].slice(0, 3)}
-              {(l.m === 1 || i === 0) && <small>{l.y}</small>}
+              {MESES[m - 1].slice(0, 3)}
+              {(m === 1 || i === 0) && <small>{y}</small>}
             </span>
           </div>
         )

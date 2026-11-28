@@ -159,3 +159,25 @@ def test_receita_prevista_corta_meses_vazios_e_conta_ultimo_plano():
     por_mes = {l["mes"]: l for l in linhas}
     assert por_mes["2026-03"] == {"mes": "2026-03", "receita": 2900 + 2500, "socios": 2}
     assert por_mes["2026-04"] == {"mes": "2026-04", "receita": 2900, "socios": 1}  # b saiu a 1 de abril
+
+
+def test_situacao_inclui_prazo_de_cada_mes():
+    s = regras.situacao([per("2026-11-01")], [], "2026-12-20")
+    assert s["emAtraso"][0]["prazo"] == "2026-12-08"
+    assert s["dentroDoPrazo"][0] == {"mes": "2026-12", "valor": 2500, "planoNome": "Mensal 3× semana", "prazo": "2027-01-08"}
+
+
+# ---------------------------------------------------------------- recebido por metodo
+def test_recebido_por_metodo_ultimos_12_meses_pela_data_de_pagamento():
+    pagamentos = [
+        {**pag("2025-11", 2100, "2025-11-30"), "metodo": "MBWAY"},  # 12 meses + 1: fica de fora
+        {**pag("2025-11", 2200, "2025-12-01"), "metodo": "MBWAY"},  # mes antigo pago dentro da janela: conta
+        {**pag("2026-11", 2500, "2026-11-03"), "metodo": "DINHEIRO"},
+        {**pag("2026-12", 2500, "2026-11-20"), "metodo": "DINHEIRO"},  # adiantado
+    ]
+    r = regras.recebido_por_metodo(pagamentos, "2026-11-28")
+    assert r["desde"] == "2025-12-01"
+    assert r["metodos"] == [
+        {"metodo": "MBWAY", "valor": 2200, "n": 1},
+        {"metodo": "DINHEIRO", "valor": 5000, "n": 2},
+    ]

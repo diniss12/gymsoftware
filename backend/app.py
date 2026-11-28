@@ -16,6 +16,7 @@ from aws_lambda_powertools.event_handler import APIGatewayHttpResolver, Response
 from aws_lambda_powertools.logging import correlation_paths
 from aws_lambda_powertools.utilities.typing import LambdaContext
 
+import regras
 import repo
 import validacao as v
 from validacao import ErroApi
@@ -173,7 +174,36 @@ def obter_socio(socio_id: str):
     if not r:
         raise ErroApi(404, "Sócio não encontrado")
     socio, periodos, pagamentos = r
-    return {**socio, "historico": periodos, "pagamentos": pagamentos}
+    return {
+        **socio,
+        "historico": periodos,
+        "pagamentos": pagamentos,
+        "situacao": regras.situacao(periodos, pagamentos, v.hoje().isoformat()),
+    }
+
+
+# ================================================================ resumos
+# Calculados aqui (regras.py) e nao no browser: o ecra e o chat usam a mesma
+# definicao de "em atraso" e de receita. ~300 socios: 2-3 Queries por pedido.
+@app.get("/resumo/pagamentos")
+def resumo_pagamentos():
+    """Painel do Inicio: atrasos, recebido no mes, mes anterior ainda no prazo."""
+    return regras.resumo_pagamentos(
+        repo.listar_socios(),
+        repo.listar_periodos(),
+        repo.listar_pagamentos("0000-00"),  # todos: o recebido do mes conta pagamentos de meses antigos
+        v.hoje().isoformat(),
+    )
+
+
+@app.get("/resumo/receita")
+def resumo_receita():
+    """Receita prevista pelos planos (12 meses) e recebida por metodo (12 meses)."""
+    hoje = v.hoje().isoformat()
+    return {
+        "prevista": regras.receita_prevista_por_mes(repo.listar_periodos(), hoje),
+        "porMetodo": regras.recebido_por_metodo(repo.listar_pagamentos("0000-00"), hoje),
+    }
 
 
 # ================================================================ pagamentos

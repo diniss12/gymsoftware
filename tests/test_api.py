@@ -372,3 +372,37 @@ def test_listar_pagamentos_desde():
     assert sorted((p["mes"], p["socioId"]) for p in recentes) == sorted([("2026-07", a["id"]), ("2026-07", b["id"])])
     assert "GSI1PK" not in recentes[0]
     assert pedido("GET", "/pagamentos", query={"desde": "junho"})[0] == 400
+
+
+# ---------------------------------------------------------------- resumos (regras.py via API)
+def test_resumos_e_situacao_na_ficha(monkeypatch):
+    # "Hoje" fixo: os resumos dependem da data e o teste nao pode mudar de resultado com o calendario.
+    from datetime import date
+
+    monkeypatch.setattr(validacao, "hoje", lambda: date(2027, 1, 5))
+    plano = criar_plano(3, 2500)
+    _, a = pedido("POST", "/socios", dados_socio(plano["id"]))
+    _, b = pedido("POST", "/socios", dados_socio(plano["id"], nif=NIF_B, nome="Bruno"))
+    pedido("POST", f"/socios/{a['id']}/pagamentos", pagamento("2026-11", dataPagamento="2026-12-01"))
+    pedido("POST", f"/socios/{a['id']}/pagamentos", pagamento("2026-12", metodo="DINHEIRO", dataPagamento="2027-01-02"))
+
+    s, r = pedido("GET", "/resumo/pagamentos")
+    assert s == 200, r
+    # Bruno nao pagou novembro (prazo 08/12) -> em atraso; dezembro ainda no prazo (ate 08/01)
+    assert [(x["nome"], [m["mes"] for m in x["meses"]], x["total"]) for x in r["atrasos"]] == [("Bruno", ["2026-11"], 2500)]
+    assert r["totalAtraso"] == 2500
+    assert r["recebidoMes"] == 2500 and r["nRecebidoMes"] == 1  # o de dezembro, pago a 2 de janeiro
+    assert r["mesAnterior"] == "2026-12" and r["prazoMesAnterior"] == "2027-01-08"
+    assert r["dentroDoPrazo"] == 1 and r["valorDentroDoPrazo"] == 2500 and r["diaLimite"] == 8
+
+    s, rec = pedido("GET", "/resumo/receita")
+    assert s == 200, rec
+    assert rec["prevista"][-1] == {"mes": "2027-01", "receita": 5000, "socios": 2}
+    assert rec["porMetodo"]["metodos"] == [
+        {"metodo": "MBWAY", "valor": 2500, "n": 1},
+        {"metodo": "DINHEIRO", "valor": 2500, "n": 1},
+    ]
+
+    _, ficha = pedido("GET", f"/socios/{a['id']}")
+    assert ficha["situacao"]["emAtraso"] == []
+    assert [(m["mes"], m["prazo"]) for m in ficha["situacao"]["dentroDoPrazo"]] == [("2027-01", "2027-02-08")]

@@ -61,12 +61,6 @@ export const MESES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho'
 
 export const METODOS = { MBWAY: 'MB WAY', DINHEIRO: 'Dinheiro' }
 
-/** Primeiro mes cobrado na app: meses anteriores (antes de a app existir) nunca contam como divida. */
-export const INICIO_COBRANCA = '2026-11'
-
-/** A mensalidade do mes M pode ser paga ate ao dia 8 do mes M+1; depois fica em atraso. */
-export const DIA_LIMITE = 8
-
 const pad2 = (n) => String(n).padStart(2, '0')
 
 export function mesSeguinte(mes) {
@@ -75,51 +69,11 @@ export function mesSeguinte(mes) {
   return m === 12 ? `${y + 1}-01` : `${y}-${pad2(m + 1)}`
 }
 
-export function mesAnterior(mes, n = 1) {
-  let y = Number(mes.slice(0, 4))
-  let m = Number(mes.slice(5, 7)) - n
-  while (m < 1) [m, y] = [m + 12, y - 1]
-  return `${y}-${pad2(m)}`
-}
-
 /** "2026-07" -> "Julho 2026" */
 export const mesNome = (mes) => `${MESES[Number(mes.slice(5, 7)) - 1]} ${mes.slice(0, 4)}`
 
 /** "2026-07" -> "Jul 2026" */
 export const mesCurto = (mes) => `${MESES[Number(mes.slice(5, 7)) - 1].slice(0, 3)} ${mes.slice(0, 4)}`
 
-/** Data limite de pagamento do mes: "2026-07" -> "2026-08-08" */
-export const prazo = (mes) => `${mesSeguinte(mes)}-${pad2(DIA_LIMITE)}`
-
-/**
- * Meses que um socio deve pagar, de INICIO_COBRANCA (ou da entrada) ate `ate`.
- * Deve um mes se teve um plano em vigor em algum dia desse mes; o valor e o do
- * ultimo plano do mes (mesma regra da receita prevista). dataFim e exclusiva.
- */
-export function mesesDevidos(periodos, ate) {
-  if (!periodos?.length) return []
-  const primeiro = periodos.reduce((a, p) => (p.dataInicio < a ? p.dataInicio : a), '9999').slice(0, 7)
-  let mes = primeiro > INICIO_COBRANCA ? primeiro : INICIO_COBRANCA
-  const devidos = []
-  while (mes <= ate) {
-    const inicio = `${mes}-01`
-    const seguinte = `${mesSeguinte(mes)}-01`
-    const noMes = periodos.filter((p) => p.dataInicio < seguinte && (!p.dataFim || p.dataFim > inicio))
-    if (noMes.length) {
-      const ultimo = noMes.reduce((a, b) => (b.dataInicio > a.dataInicio ? b : a))
-      devidos.push({ mes, valor: ultimo.precoMensal, planoNome: ultimo.planoNome })
-    }
-    mes = mesSeguinte(mes)
-  }
-  return devidos
-}
-
-/** Meses por pagar de um socio, separados em "em atraso" (prazo passou) e "dentro do prazo". */
-export function situacao(periodos, pagamentos, hoje = hojeISO()) {
-  const pagos = new Set((pagamentos ?? []).map((p) => p.mes))
-  const porPagar = mesesDevidos(periodos, hoje.slice(0, 7)).filter((d) => !pagos.has(d.mes))
-  return {
-    emAtraso: porPagar.filter((d) => prazo(d.mes) < hoje),
-    dentroDoPrazo: porPagar.filter((d) => prazo(d.mes) >= hoje),
-  }
-}
+// As regras de pagamento (meses devidos, prazos, atrasos) vivem no backend:
+// backend/regras.py, a mesma definicao para o ecra e para o chat.
