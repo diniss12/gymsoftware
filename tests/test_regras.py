@@ -181,3 +181,17 @@ def test_recebido_por_metodo_ultimos_12_meses_pela_data_de_pagamento():
         {"metodo": "MBWAY", "valor": 2200, "n": 1},
         {"metodo": "DINHEIRO", "valor": 5000, "n": 2},
     ]
+
+
+def test_recebido_por_mes_pela_data_de_pagamento():
+    pagamentos = [
+        pag("2026-10", 2100, "2026-11-02"),  # outubro pago em novembro: conta em novembro
+        pag("2026-11", 2500, "2026-11-20"),
+        pag("2026-09", 2500, "2026-09-05"),
+        pag("2025-10", 9999, "2025-10-05"),  # fora da janela de 3 meses
+    ]
+    assert regras.recebido_por_mes(pagamentos, "2026-11-28", meses=3) == [
+        {"mes": "2026-09", "valor": 2500, "n": 1},
+        {"mes": "2026-10", "valor": 0, "n": 0},
+        {"mes": "2026-11", "valor": 4600, "n": 2},
+    ]

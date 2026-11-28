@@ -6,6 +6,17 @@ Description: gymsoftware - gestao de ginasio serverless (API + Cognito + DynamoD
 # batem com o prefixo gymsoftware-* das permissoes da role de deploy e
 # permitem substituir recursos sem colisoes de nomes.
 
+Parameters:
+  ChatModelId:
+    Type: String
+    # Perfil de inferencia da UE (dados processados na Europa). Trocar de modelo
+    # e so mudar isto: o chat usa a Converse API, igual para todos os modelos.
+    Default: eu.amazon.nova-lite-v1:0
+  ChatFoundationModel:
+    Type: String
+    # Modelo base por tras do perfil (o IAM exige permissao nos dois).
+    Default: amazon.nova-lite-v1:0
+
 Globals:
   Function:
     Runtime: python3.13
@@ -142,6 +153,52 @@ Resources:
     Properties:
       LogGroupName: !Sub "/aws/lambda/${ApiFunction}"
       RetentionInDays: 14               # sem isto os logs ficam (e pagam-se) para sempre
+
+  # ------------------------------------------------------------------ Chat (assistente)
+  # Lambda separada com role SO DE LEITURA: o modelo nunca consegue gravar dados.
+  # Pagamentos propostos pelo chat sao gravados pelo frontend via ApiFunction,
+  # depois de o dono confirmar.
+  ChatFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: backend/
+      Handler: chat.lambda_handler
+      Timeout: 29                       # o HTTP API corta aos 30 s
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref Table
+          MODEL_ID: !Ref ChatModelId
+          CHAT_LIMITE_DIA: "50"          # travao de custos: perguntas por dia
+          POWERTOOLS_SERVICE_NAME: gymsoftware-chat
+          POWERTOOLS_LOG_LEVEL: INFO
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref Table
+        - Statement:
+            # Unica escrita: o contador diario de perguntas (chaves LIMITE#...).
+            - Effect: Allow
+              Action: dynamodb:UpdateItem
+              Resource: !GetAtt Table.Arn
+              Condition:
+                ForAllValues:StringLike:
+                  dynamodb:LeadingKeys: ["LIMITE#*"]
+            # Perfil "eu." encaminha para varias regioes da UE: permissao no
+            # perfil e no modelo base em qualquer regiao.
+            - Effect: Allow
+              Action: bedrock:InvokeModel
+              Resource:
+                - !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/${ChatModelId}"
+                - !Sub "arn:aws:bedrock:*::foundation-model/${ChatFoundationModel}"
+      Events:
+        Chat:
+          Type: HttpApi
+          Properties: { ApiId: !Ref HttpApi, Path: /chat, Method: POST }
+
+  ChatFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${ChatFunction}"
+      RetentionInDays: 14
 
   # ------------------------------------------------------------------ Frontend
   FrontendBucket:

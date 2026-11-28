@@ -28,8 +28,10 @@ template.yaml                  # SAM — TEM de estar na raiz
 backend/app.py                 # rotas + regras de negócio
 backend/repo.py                # acesso ao DynamoDB (itens, transações)
 backend/validacao.py           # validação de campos, NIF, ULID, datas (Europe/Lisbon)
+backend/chat.py                # Lambda do assistente (POST /chat): loop Bedrock Converse + ferramentas de leitura + propor_pagamento
 backend/regras.py              # FONTE ÚNICA das regras de pagamentos/receita (meses devidos, prazos, atrasos, receita prevista, recebido por método); funções puras usadas pela API e pelo chat
 backend/requirements.txt       # aws-lambda-powertools>=3,<4, tzdata
+tests/test_chat.py             # ferramentas do chat (moto) + loop com modelo falso (sem Bedrock)
 tests/test_regras.py           # testes puros das regras (casos-limite)
 tests/test_api.py              # pytest + moto (DynamoDB simulado); correm SÓ no GitHub Actions (passo "Testes", antes do deploy)
 scripts/planos.json            # planos mensais com ids fixos; carregar UMA vez: aws dynamodb batch-write-item --region eu-west-1 --request-items file://scripts/planos.json (voltar a correr repõe os preços originais)
@@ -59,6 +61,12 @@ Pagamentos (regras em backend/regras.py; o frontend só mostra o que GET /resumo
 Escritas de sócio são transações; ficha usa lock otimista (condição atualizadoEm = valor lido).
 Caso-limite conhecido: POST /socios/{id}/plano com data = dataInicio do período atual cria um período de 0 dias (não parte nada, mas suja o histórico).
 API: GET/POST /planos, PUT /planos/{id}; GET /periodos (todos, com socioId); GET /pagamentos[?desde=AAAA-MM]; POST /socios/{id}/pagamentos {mes, valor, metodo, dataPagamento?, notas?}; DELETE /socios/{id}/pagamentos/{mes}; GET /socios/{id} inclui historico + pagamentos + situacao {emAtraso, dentroDoPrazo} (cada mês com prazo); GET /resumo/pagamentos (painel do Início); GET /resumo/receita {prevista: 12 meses, porMetodo: recebido 12 meses por dataPagamento}; GET /socios[?estado=], GET/PUT /socios/{id}, POST /socios (planoId obrigatório), POST /socios/{id}/plano {planoId, data?}, /inativar {data?}, /reativar {planoId, data?}. Erros: {"message"} com 400/404/409.
+Assistente (chat)
+Lambda própria (ChatFunction, handler chat.lambda_handler, mesmo código em backend/) com role SÓ DE LEITURA na tabela + UpdateItem limitado por IAM a chaves LIMITE#* (contador diário, CHAT_LIMITE_DIA=50 perguntas/dia → 429). Rota POST /chat (mais específica que /{proxy+}), timeout 29 s, máx. 5 chamadas ao modelo por pergunta.
+Modelo: Amazon Nova Lite via Bedrock Converse API (parâmetro ChatModelId = eu.amazon.nova-lite-v1:0 + ChatFoundationModel para o IAM). Claude Haiku 5.5 no Bedrock dá "not available for this account" (provavelmente conta no Free plan); trocar de modelo = mudar os dois parâmetros.
+Ferramentas: procurar_socio, ficha_socio, pagamentos_em_atraso, receita, resumo_socios, listar_planos, propor_pagamento. Valores já em euros (arredondados em Python); números vêm sempre do regras.py. Sem NIF/nascimento/morada nos resultados.
+propor_pagamento NÃO grava: devolve uma proposta; o frontend (página Assistente) mostra um cartão e só ao Confirmar chama POST /socios/{id}/pagamentos (API normal). Criar sócios pelo chat: não (usa o formulário).
+Histórico da conversa só no browser; enviado inteiro em cada pedido (máx. 20 mensagens).
 AWS
 Conta 659791935620, região eu-west-1, stack gymsoftware.
 Role de deploy: arn:aws:iam::659791935620:role/GitHubActions-diniss12-gymsoftware (ARN, região e stack estão hardcoded no deploy.yml, sem secrets/variables no GitHub).

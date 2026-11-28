@@ -123,6 +123,19 @@ def resumo_pagamentos(socios: list[dict], periodos: list[dict], pagamentos: list
     }
 
 
+def recebido_por_mes(pagamentos: list[dict], hoje: str, meses: int = 12) -> list[dict]:
+    """Valor RECEBIDO em cada um dos ultimos `meses` meses, pela dataPagamento
+    (o dinheiro que entrou nesse mes, seja de que mensalidade for)."""
+    lista = [mes_anterior(hoje[:7], i) for i in range(meses - 1, -1, -1)]
+    linhas = {m: {"mes": m, "valor": 0, "n": 0} for m in lista}
+    for p in pagamentos:
+        linha = linhas.get(p["dataPagamento"][:7])
+        if linha and p["dataPagamento"] <= hoje:
+            linha["valor"] += p["valor"]
+            linha["n"] += 1
+    return [linhas[m] for m in lista]
+
+
 def recebido_por_metodo(pagamentos: list[dict], hoje: str, meses: int = 12) -> dict:
     """Valor RECEBIDO (pela dataPagamento) nos ultimos `meses` meses, incluindo
     o atual, por metodo de pagamento."""
