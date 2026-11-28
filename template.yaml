@@ -60,6 +60,11 @@ Resources:
         AllowAdminCreateUserOnly: true   # sem registo publico
       UsernameAttributes: [email]
       AutoVerifiedAttributes: [email]
+      # MFA por app autenticadora (TOTP, gratis; SMS custaria). "OPTIONAL"
+      # porque "ON" so se pode escolher ao criar o pool: e a app que obriga a
+      # configurar no 1.o login; a partir dai o Cognito pede o codigo sempre.
+      MfaConfiguration: "OPTIONAL"
+      EnabledMfas: [SOFTWARE_TOKEN_MFA]
       AccountRecoverySetting:
         RecoveryMechanisms:
           - { Name: verified_email, Priority: 1 }
@@ -94,7 +99,6 @@ Resources:
       CorsConfiguration:
         AllowOrigins:
           - !Sub "https://${Distribution.DomainName}"
-          - http://localhost:5173       # npm run dev (Vite)
         AllowHeaders: [authorization, content-type]
         AllowMethods: [GET, POST, PUT, PATCH, DELETE, OPTIONS]
         MaxAge: 600
@@ -243,6 +247,34 @@ Resources:
         SigningBehavior: always
         SigningProtocol: sigv4
 
+  # Cabecalhos de seguranca em todas as respostas do site (sem custo).
+  # A CSP so deixa carregar codigo do proprio site e falar com a API e o
+  # Cognito: se algum dia entrar codigo malicioso na pagina, nao consegue
+  # enviar os tokens de sessao para outro lado.
+  SecurityHeaders:
+    Type: AWS::CloudFront::ResponseHeadersPolicy
+    Properties:
+      ResponseHeadersPolicyConfig:
+        Name: !Sub "${AWS::StackName}-security-headers"
+        SecurityHeadersConfig:
+          ContentSecurityPolicy:
+            Override: true
+            # API por wildcard: referenciar o HttpApi aqui criava um ciclo
+            # (o CORS do HttpApi ja depende do dominio da Distribution).
+            ContentSecurityPolicy: !Sub "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://*.execute-api.${AWS::Region}.amazonaws.com https://cognito-idp.${AWS::Region}.amazonaws.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+          StrictTransportSecurity:    # browser passa a recusar HTTP durante 2 anos
+            Override: true
+            AccessControlMaxAgeSec: 63072000
+            IncludeSubdomains: true
+          FrameOptions:               # ninguem pode meter a app num iframe (clickjacking)
+            Override: true
+            FrameOption: DENY
+          ContentTypeOptions:
+            Override: true
+          ReferrerPolicy:
+            Override: true
+            ReferrerPolicy: strict-origin-when-cross-origin
+
   Distribution:
     Type: AWS::CloudFront::Distribution
     Properties:
@@ -265,6 +297,7 @@ Resources:
           AllowedMethods: [GET, HEAD]
           Compress: true
           CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6  # Managed-CachingOptimized
+          ResponseHeadersPolicyId: !Ref SecurityHeaders
         CustomErrorResponses:           # SPA routing: rotas do React servem index.html
           - { ErrorCode: 403, ResponseCode: 200, ResponsePagePath: /index.html, ErrorCachingMinTTL: 0 }
           - { ErrorCode: 404, ResponseCode: 200, ResponsePagePath: /index.html, ErrorCachingMinTTL: 0 }

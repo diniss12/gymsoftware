@@ -86,6 +86,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
   text-decoration: underline; text-underline-offset: 3px; justify-self: center; color: var(--ink);
 }
 .login-dica { font-size: .78rem; color: #5c5852; }
+.login-qr { display: block; width: 220px; height: 220px; margin: 0 auto; background: #fff; padding: 8px; }
+.login-segredo { display: block; margin-top: 4px; font-family: ui-monospace, monospace; font-size: .8rem; color: var(--ink); word-break: break-all; }
 .login-erro, .login-info {
   padding: 12px 14px; font-size: .88rem; font-weight: 600; margin-bottom: 18px; border-left: 4px solid;
 }

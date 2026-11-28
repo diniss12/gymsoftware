@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { BrowserRouter, Navigate, NavLink, Route, Routes } from 'react-router-dom'
-import { getCurrentUser, signOut } from 'aws-amplify/auth'
-import Login from './Login.jsx'
+import { fetchMFAPreference, getCurrentUser, signOut } from 'aws-amplify/auth'
+import Login, { ConfigurarMFA } from './Login.jsx'
 import { DadosProvider } from './dados.jsx'
 import Socios from './pages/Socios.jsx'
 import SocioFicha from './pages/SocioFicha.jsx'
@@ -15,11 +15,20 @@ import logo from './assets/logo.png'
 export default function App() {
   // undefined = ainda a verificar sessao; null = sem sessao
   const [user, setUser] = useState(undefined)
+  const [temMfa, setTemMfa] = useState(false)
 
-  const verificar = () =>
-    getCurrentUser()
-      .then(setUser)
-      .catch(() => setUser(null))
+  // Sessao valida + MFA configurado. Sem MFA, a app obriga a configura-lo
+  // antes de mostrar qualquer dado (o pool tem MFA "OPTIONAL": ver template).
+  const verificar = async () => {
+    try {
+      const u = await getCurrentUser()
+      const { enabled } = await fetchMFAPreference()
+      setTemMfa(Boolean(enabled?.includes('TOTP')))
+      setUser(u)
+    } catch {
+      setUser(null)
+    }
+  }
 
   useEffect(() => {
     verificar()
@@ -31,6 +40,10 @@ export default function App() {
   const sair = async () => {
     await signOut()
     setUser(null)
+  }
+
+  if (!temMfa) {
+    return <ConfigurarMFA email={user.signInDetails?.loginId ?? user.username} onFeito={() => setTemMfa(true)} onSair={sair} />
   }
 
   return (
