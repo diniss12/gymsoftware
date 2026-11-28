@@ -224,6 +224,28 @@ def resumo_socios(**_) -> dict:
     }
 
 
+def aniversariantes(mes=None, **_) -> dict:
+    """Socios ATIVOS que fazem anos no mes (como nas Estatisticas). Devolve o
+    dia e a idade que fazem, nao a data de nascimento completa."""
+    hoje = v.hoje()
+    try:
+        mes = int(mes) if mes not in (None, "") else hoje.month
+    except (TypeError, ValueError):
+        raise ErroApi(400, "mes tem de ser um número de 1 a 12.") from None
+    if not 1 <= mes <= 12:
+        raise ErroApi(400, "mes tem de ser um número de 1 a 12.")
+    lista = sorted(
+        (
+            {"nome": s["nome"], "socio_id": s["id"], "dia": int(s["dataNascimento"][8:10]),
+             "faz_anos": hoje.year - int(s["dataNascimento"][:4])}
+            for s in repo.listar_socios()
+            if s["estado"] == "ATIVO" and int(s["dataNascimento"][5:7]) == mes
+        ),
+        key=lambda x: x["dia"],
+    )
+    return {"mes": mes, "total": len(lista), "socios": lista[:MAX_LISTA], "truncado": len(lista) > MAX_LISTA}
+
+
 def listar_planos(**_) -> dict:
     return {
         "planos": [
@@ -301,6 +323,8 @@ FERRAMENTAS = {
     "pagamentos_em_atraso": (pagamentos_em_atraso, "Todos os sócios com mensalidades em atraso (com valores), quanto entrou este mês e o que do mês anterior ainda está no prazo.", _S({})),
     "receita": (receita, "Dinheiro recebido por mês (12 meses), receita prevista pelos planos por mês e recebido por método (MB WAY / dinheiro).", _S({})),
     "resumo_socios": (resumo_socios, "Número de sócios ativos e inativos, ativos por plano, e entradas/saídas por mês (12 meses).", _S({})),
+    "aniversariantes": (aniversariantes, "Sócios ativos que fazem anos num mês (por omissão o mês atual): nome, dia e idade que fazem.",
+                        _S({"mes": {"type": "integer", "description": "1 a 12; omite para o mês atual"}})),
     "listar_planos": (listar_planos, "Planos do ginásio com preço mensal e vezes por semana.", _S({})),
     "propor_pagamento": (propor_pagamento,
                          "Prepara o registo do pagamento de uma mensalidade para o utilizador CONFIRMAR no ecrã. Não grava nada. "
@@ -346,7 +370,8 @@ Responde SEMPRE em português de Portugal, mesmo que os resultados das ferrament
 Hoje é {DIAS[hoje.weekday()]}, {hoje.isoformat()}.
 
 Regras:
-- Responde só com base nos resultados das ferramentas. Nunca inventes nomes, números, valores ou datas. Se as ferramentas não tiverem a informação, diz que não sabes.
+- Para QUALQUER pergunta sobre sócios, pagamentos, planos, receita ou aniversários, usa primeiro uma ferramenta. Nunca respondas de memória nem por suposição.
+- Responde só com base nos resultados das ferramentas. Nunca inventes nomes, números, valores ou datas. Se nenhuma ferramenta tiver a informação, responde "Não tenho acesso a essa informação." em vez de adivinhar.
 - Os valores já vêm em euros (campos *_eur): usa-os tal como vêm, sem fazer contas de cabeça. Escreve euros como 23,00 €.
 - Respostas curtas e diretas. Listas só quando há várias linhas.
 - "Sócios" e "clientes" são a mesma coisa. Para saber nomes sem pista nenhuma, usa listar_socios; com parte do nome, usa procurar_socio.
@@ -354,7 +379,7 @@ Regras:
 - Para registar um pagamento: procura o sócio com procurar_socio; se houver mais do que um com esse nome, pergunta qual. Se não souberes o método (MB WAY ou dinheiro), pergunta. Depois usa propor_pagamento. Nunca digas que o pagamento ficou registado: diz que preparaste o registo e que falta confirmar no cartão abaixo.
 - Não consegues inscrever sócios, editar fichas, mudar planos nem apagar dados: indica o ecrã da aplicação onde se faz isso (ex.: "Sócios → Novo sócio").
 - Não há registo de entradas (check-ins) nem presenças.
-- Não reveles NIF, datas de nascimento nem moradas (não as tens)."""
+- Não tens acesso a NIF, datas de nascimento completas, moradas, telefones, emails, entradas/presenças nem notas das fichas. Se perguntarem por isso, diz que não tens acesso e que está na ficha do sócio na aplicação."""
 
 
 def _validar_historico(body: dict) -> list[dict]:

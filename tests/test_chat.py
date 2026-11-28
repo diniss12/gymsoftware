@@ -214,3 +214,17 @@ def test_listar_socios(socios):
     assert "123456789" not in json.dumps(r)
     assert chat.listar_socios(estado="INATIVO")["total"] == 0
     assert chat.executar("listar_socios", {"estado": "X"}, [])[1] is False
+
+
+def test_aniversariantes(socios, monkeypatch):
+    # dados_socio: nascimento 1990-05-17; hoje fixo e 2027-01-05
+    assert chat.aniversariantes()["total"] == 0  # janeiro
+    r = chat.aniversariantes(mes=5)
+    assert [(x["nome"], x["dia"], x["faz_anos"]) for x in r["socios"]] == [("Bruno Costa", 17, 37), ("Leandro Silva", 17, 37)]
+    assert "1990-05-17" not in json.dumps(r)  # so dia e idade, nao a data completa
+    assert chat.executar("aniversariantes", {"mes": 13}, [])[1] is False
+
+
+def test_system_prompt_obriga_a_usar_ferramentas():
+    p = chat.system_prompt(date(2027, 1, 5))
+    assert "usa primeiro uma ferramenta" in p and "Não tenho acesso a essa informação" in p
