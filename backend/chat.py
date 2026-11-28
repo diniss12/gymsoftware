@@ -248,6 +248,32 @@ def resumo_socios(**_) -> dict:
     }
 
 
+def socios_por_localidade(localidade: str = "", **_) -> dict:
+    """Socios ATIVOS por localidade, agrupados como nas Estatisticas
+    (sem maiusculas/acentos: 'felgueiras' = 'Felgueiras')."""
+    grupos: dict[str, dict] = {}
+    for s in repo.listar_socios():
+        if s["estado"] != "ATIVO":
+            continue
+        nome_loc = (s.get("localidade") or "").strip() or "Sem localidade"
+        g = grupos.setdefault(normalizar(nome_loc), {"localidade": nome_loc, "socios": []})
+        g["socios"].append(s)
+    termo = normalizar((localidade or "").strip())
+    if not termo:
+        lista = sorted(grupos.values(), key=lambda g: -len(g["socios"]))
+        return {"total_ativos": sum(len(g["socios"]) for g in lista),
+                "por_localidade": [{"localidade": g["localidade"], "ativos": len(g["socios"])} for g in lista]}
+    escolhidos = [g for k, g in grupos.items() if termo == k] or [g for k, g in grupos.items() if termo in k]
+    socios = [s for g in escolhidos for s in g["socios"]]
+    return {
+        "procurado": localidade,
+        "localidades_encontradas": [g["localidade"] for g in escolhidos],
+        "total_ativos": len(socios),
+        "socios": [{"socio_id": s["id"], "nome": s["nome"]} for s in socios[:MAX_LISTA]],
+        "truncado": len(socios) > MAX_LISTA,
+    }
+
+
 def aniversariantes(mes=None, **_) -> dict:
     """Socios ATIVOS que fazem anos no mes (como nas Estatisticas). Devolve o
     dia e a idade que fazem, nao a data de nascimento completa."""
@@ -349,6 +375,8 @@ FERRAMENTAS = {
                 "Para comparar dois meses (crescimento, diferença), passa mes_inicio e mes_fim: a diferença e a percentagem vêm já calculadas em 'comparacao'.",
                 _S({"mes_inicio": {"type": "string", "description": "AAAA-MM"}, "mes_fim": {"type": "string", "description": "AAAA-MM; omite para o mês atual"}})),
     "resumo_socios": (resumo_socios, "Número de sócios ativos e inativos, ativos por plano, e entradas/saídas por mês (12 meses).", _S({})),
+    "socios_por_localidade": (socios_por_localidade, "Sócios ativos por localidade. Sem parâmetro: contagem de cada localidade. Com localidade: quantos e quais os sócios dessa localidade.",
+                              _S({"localidade": {"type": "string", "description": "Ex.: Lousada; omite para ver todas"}})),
     "aniversariantes": (aniversariantes, "Sócios ativos que fazem anos num mês (por omissão o mês atual): nome, dia e idade que fazem.",
                         _S({"mes": {"type": "integer", "description": "1 a 12; omite para o mês atual"}})),
     "listar_planos": (listar_planos, "Planos do ginásio com preço mensal e vezes por semana.", _S({})),
@@ -398,6 +426,7 @@ Hoje é {DIAS[hoje.weekday()]}, {hoje.isoformat()}.
 Regras:
 - Para QUALQUER pergunta sobre sócios, pagamentos, planos, receita ou aniversários, usa primeiro uma ferramenta. Nunca respondas de memória nem por suposição.
 - Responde só com base nos resultados das ferramentas. Nunca inventes nomes, números, valores ou datas. Se nenhuma ferramenta tiver a informação, responde "Não tenho acesso a essa informação." em vez de adivinhar.
+- Nunca digas que há zero, nenhum ou "não tenho clientes" sem uma ferramenta o ter devolvido.
 - Os valores já vêm em euros (campos *_eur): usa-os tal como vêm. Nunca faças contas (somas, diferenças, percentagens): se precisares de uma, usa os parâmetros da ferramenta que a calcula (ex.: receita com mes_inicio e mes_fim). Escreve euros como 23,00 €.
 - "Receita" tem duas medidas: a PREVISTA (soma dos planos; é a que aparece no gráfico "Receita por mês" das Estatísticas) e a RECEBIDA (pagamentos registados). Se o utilizador disser só "receita", usa a prevista e diz que é a prevista; podes acrescentar a recebida numa segunda frase. Diz sempre qual das duas estás a usar.
 - Respostas curtas e diretas, só com a resposta final, sem etiquetas XML (nada de <response> ou <thinking>). Listas só quando há várias linhas.
@@ -451,19 +480,41 @@ def limpar(texto: str) -> str:
     return texto.replace("<response>", "").replace("</response>", "").strip()
 
 
+_SUPORTA_ANY = True  # muda para False se o modelo recusar toolChoice "any"
+
+
+def _chamar_modelo(sistema, msgs, obrigar_ferramenta: bool):
+    """Na 1.a chamada de cada pergunta obriga o modelo a usar uma ferramenta
+    (toolChoice "any"): os modelos pequenos tendem a responder "de memoria" e a
+    inventar ("nao tenho clientes de Lousada"). Depois, "auto", para poder
+    responder em texto. Se o modelo nao aceitar "any", continua sem ele."""
+    global _SUPORTA_ANY
+    config = TOOL_CONFIG
+    if obrigar_ferramenta and _SUPORTA_ANY:
+        config = {**TOOL_CONFIG, "toolChoice": {"any": {}}}
+    try:
+        return bedrock().converse(
+            modelId=MODELO,
+            system=sistema,
+            messages=msgs,
+            toolConfig=config,
+            inferenceConfig={"maxTokens": 1000, "temperature": 0},  # 0: escolhas de ferramenta deterministas
+        )
+    except ClientError as e:
+        if config is TOOL_CONFIG or e.response["Error"]["Code"] != "ValidationException":
+            raise
+        logger.warning("Modelo nao aceita toolChoice any; a continuar sem", extra={"erro": str(e)})
+        _SUPORTA_ANY = False
+        return _chamar_modelo(sistema, msgs, obrigar_ferramenta=False)
+
+
 def conversar(msgs: list[dict]) -> tuple[str, list[dict]]:
     """Loop do agente: o modelo pede ferramentas, corremo-las, devolvemos os
     resultados, ate ele responder em texto (ou ate MAX_VOLTAS)."""
     propostas: list[dict] = []
     sistema = [{"text": system_prompt(v.hoje())}]
-    for _ in range(MAX_VOLTAS):
-        r = bedrock().converse(
-            modelId=MODELO,
-            system=sistema,
-            messages=msgs,
-            toolConfig=TOOL_CONFIG,
-            inferenceConfig={"maxTokens": 1000, "temperature": 0},  # 0: escolhas de ferramenta deterministas
-        )
+    for volta in range(MAX_VOLTAS):
+        r = _chamar_modelo(sistema, msgs, obrigar_ferramenta=volta == 0)
         saida = r["output"]["message"]
         msgs.append(saida)
         usos = [b["toolUse"] for b in saida["content"] if "toolUse" in b]

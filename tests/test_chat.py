@@ -253,3 +253,37 @@ def test_receita_compara_meses_em_python(socios):
     assert chat.receita(mes_inicio="2020-01")["comparacao"]["prevista"] == {"erro": "mês fora dos últimos 12 meses"}
     assert chat.receita()["comparacao"] is None
     assert chat.executar("receita", {"mes_inicio": "junho"}, [])[1] is False
+
+
+def test_socios_por_localidade(socios):
+    # dados_socio: localidade "Braga" para os dois
+    assert chat.socios_por_localidade() == {"total_ativos": 2, "por_localidade": [{"localidade": "Braga", "ativos": 2}]}
+    r = chat.socios_por_localidade(localidade="braga")
+    assert r["total_ativos"] == 2 and [s["nome"] for s in r["socios"]] == ["Bruno Costa", "Leandro Silva"]
+    assert chat.socios_por_localidade(localidade="Lousada")["total_ativos"] == 0
+
+
+def test_primeira_chamada_obriga_a_usar_ferramenta(monkeypatch):
+    monkeypatch.setattr(chat, "_SUPORTA_ANY", True)
+    modelo = ModeloFalso(usa("listar_planos", {}), diz("Há 1 plano."))
+    monkeypatch.setattr(chat, "bedrock", lambda: modelo)
+    assert pergunta("planos?")[0] == 200
+    assert modelo.pedidos[0]["toolConfig"]["toolChoice"] == {"any": {}}
+    assert "toolChoice" not in modelo.pedidos[1]["toolConfig"]  # depois pode responder em texto
+
+
+def test_modelo_sem_tool_choice_any_continua_a_funcionar(monkeypatch):
+    from botocore.exceptions import ClientError
+
+    class SemAny(ModeloFalso):
+        def converse(self, **kwargs):
+            if "toolChoice" in kwargs["toolConfig"]:
+                raise ClientError({"Error": {"Code": "ValidationException", "Message": "toolChoice any not supported"}}, "Converse")
+            return super().converse(**kwargs)
+
+    monkeypatch.setattr(chat, "_SUPORTA_ANY", True)
+    modelo = SemAny(diz("ok"))
+    monkeypatch.setattr(chat, "bedrock", lambda: modelo)
+    s, r = pergunta("olá")
+    assert s == 200 and r["resposta"] == "ok"
+    assert chat._SUPORTA_ANY is False  # nao volta a tentar nas proximas perguntas
